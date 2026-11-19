@@ -25,3 +25,12 @@ entrypoint = "config.wsgi:application"
 
 [[tool.vercel.subscribers]]
 entrypoint = "worker:app"
+
+[tool.poetry]
+name = "ledgermount-backend"
+version = "1.0.0"
+description = "Transactional, double-entry ledger backend and staff operations API."
+packages = [
+  { include = "config" },
+  { include = "src" },
+]
