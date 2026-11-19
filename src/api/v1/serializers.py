@@ -30,3 +30,14 @@ class LedgerEntrySerializer(serializers.ModelSerializer):
             'description',
             'created_at',
         ]
+
+
+class TransferRequestSerializer(serializers.Serializer):
+    source_account_id = serializers.UUIDField()
+    destination_account_id = serializers.UUIDField()
+    amount = serializers.IntegerField(min_value=1)
+
+    def validate(self, attrs):
+        if attrs['source_account_id'] == attrs['destination_account_id']:
+            raise serializers.ValidationError("Source and destination accounts must differ.")
+        return attrs

@@ -8,11 +8,15 @@ Build the application image before deploying:
 
 ```bash
 docker build -t ledger-api:latest -f deploy/docker/django/Dockerfile.prod .
+docker build -t ledger-console:latest -f frontend/Dockerfile frontend/
 ```
 
-Then apply the manifests:
+Apply the database dependencies first, then run migrations before the API rollout:
 
 ```bash
+kubectl apply -f deploy/k8/postgres.yaml -f deploy/k8/redis.yaml
+kubectl apply -f deploy/k8/ledger-migrate.yaml
+kubectl wait --for=condition=complete job/ledger-migrate --timeout=5m
 kubectl apply -k deploy/k8/
 ```
 
@@ -22,6 +26,12 @@ kubectl apply -k deploy/k8/
 - `redis.yaml` — Redis deployment, service, and PVC
 - `api.yaml` — Django API deployment and ClusterIP service
 - `celery.yaml` — Celery worker deployment
+- `frontend.yaml` — staff operations console deployment and ClusterIP service
+- `ledger-migrate.yaml` — one-shot database migration Job; run before API rollout
+
+The console service listens on port `8080` and proxies `/api/` requests to the
+`ledger-api` service. Expose it through the cluster ingress or use
+`kubectl port-forward service/ledger-console 8080:8080` for local access.
 
 ## Notes
 

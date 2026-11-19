@@ -22,6 +22,10 @@ class LedgerTransferService:
             
             if not source_acc or not destination_acc:
                 raise ValidationError("One or both specified accounts do not exist.")
+            if source_acc.id == destination_acc.id:
+                raise ValidationError("Source and destination accounts must differ.")
+            if source_acc.currency != destination_acc.currency:
+                raise ValidationError("Source and destination accounts must use the same currency.")
             if source_acc.balance < amount:
                 raise ValidationError("Insufficient funds.")
                 

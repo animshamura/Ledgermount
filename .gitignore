@@ -13,6 +13,7 @@ __pycache__/
 *.pyo
 *.sqlite3
 *.sqlite3-journal
+*.tsbuildinfo
 media/
 staticfiles/
 
@@ -26,6 +27,7 @@ staticfiles/
 build/
 dist/
 *.egg-info/
+node_modules/
 
 # Pytest
 .cache/

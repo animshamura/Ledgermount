@@ -3,3 +3,4 @@ resources:
   - redis.yaml
   - api.yaml
   - celery.yaml
+  - frontend.yaml

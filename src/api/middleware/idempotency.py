@@ -1,4 +1,5 @@
 import json
+import hashlib
 from django.http import JsonResponse
 from django.core.cache import caches
 
@@ -15,7 +16,13 @@ class RedisIdempotencyMiddleware:
         if not idempotency_key:
             return self.get_response(request)
 
-        cache_key = f"idempotency:{idempotency_key}"
+        request_scope = ":".join((
+            request.headers.get("Authorization", ""),
+            request.method,
+            request.path,
+            idempotency_key,
+        ))
+        cache_key = f"idempotency:{hashlib.sha256(request_scope.encode()).hexdigest()}"
         cached_data = self.cache.get(cache_key)
         
         if cached_data:

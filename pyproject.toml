@@ -3,6 +3,10 @@ name = "industrial-ledger-backend"
 version = "1.0.0"
 description = "High-concurrency, double-entry transactional ledger backend engine."
 authors = ["Enterprise Engineering Team <dev@company.com>"]
+packages = [
+	{ include = "config" },
+	{ include = "src" },
+]
 
 [tool.poetry.dependencies]
 python = "^3.11"

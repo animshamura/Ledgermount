@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ledger-console
+  labels:
+    app: ledger-console
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ledger-console
+  template:
+    metadata:
+      labels:
+        app: ledger-console
+    spec:
+      containers:
+        - name: ledger-console
+          image: ledger-console:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: API_UPSTREAM
+              value: ledger-api:8000
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ledger-console
+spec:
+  selector:
+    app: ledger-console
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+  type: ClusterIP

@@ -6,6 +6,8 @@ from src.api.v1.views import (
     AccountDetailView,
     LedgerEntryListView,
     LedgerEntryDetailView,
+    StaffTokenView,
+    StaffLogoutView,
 )
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
@@ -14,6 +16,8 @@ urlpatterns = [
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/schema/swagger-ui/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('api/v1/transfers', LedgerTransferView.as_view(), name='ledger-transfer'),
+    path('api/v1/auth/token/', StaffTokenView.as_view(), name='staff-token'),
+    path('api/v1/auth/logout/', StaffLogoutView.as_view(), name='staff-logout'),
     path('api/v1/health/', HealthCheckView.as_view(), name='health-check'),
     path('api/v1/accounts/', AccountListView.as_view(), name='account-list'),
     path('api/v1/accounts/<uuid:id>/', AccountDetailView.as_view(), name='account-detail'),

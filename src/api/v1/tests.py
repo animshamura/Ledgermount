@@ -1,7 +1,9 @@
 import uuid
+from django.contrib.auth import get_user_model
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.core.exceptions import ValidationError
+from rest_framework.authtoken.models import Token
 from src.domains.ledger.models.journal import Account, LedgerEntry
 from src.domains.ledger.services.transfer import LedgerTransferService
 
@@ -15,9 +17,20 @@ def dump_response(response, label=None):
     print(f"\nRESPONSE{label_msg}: status={response.status_code} body={body}\n")
 
 
+def authenticate_staff_client(client):
+    user = get_user_model().objects.create_user(
+        username=f"staff-{uuid.uuid4()}",
+        password="test-password",
+        is_staff=True,
+    )
+    token = Token.objects.create(user=user)
+    client.defaults["HTTP_AUTHORIZATION"] = f"Token {token.key}"
+
+
 class LedgerTransferAPITests(TestCase):
     def setUp(self):
         self.client = Client()
+        authenticate_staff_client(self.client)
         self.source_account = Account.objects.create(
             user_id=uuid.uuid4(),
             balance=1000,
@@ -80,12 +93,60 @@ class LedgerTransferAPITests(TestCase):
 
         dump_response(response, "invalid-amount")
         self.assertEqual(response.status_code, 400)
-        self.assertIn("error", response.json())
+        self.assertIn("amount", response.json())
+
+    def test_transfer_endpoint_rejects_non_integer_amount(self):
+        response = self.client.post(
+            "/api/v1/transfers",
+            {
+                "source_account_id": str(self.source_account.id),
+                "destination_account_id": str(self.destination_account.id),
+                "amount": "not-an-integer",
+            },
+            content_type="application/json",
+            HTTP_X_IDEMPOTENCY_KEY="invalid-amount-key",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_transfer_endpoint_rejects_same_account(self):
+        response = self.client.post(
+            "/api/v1/transfers",
+            {
+                "source_account_id": str(self.source_account.id),
+                "destination_account_id": str(self.source_account.id),
+                "amount": 100,
+            },
+            content_type="application/json",
+            HTTP_X_IDEMPOTENCY_KEY="same-account-key",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_cached_transfer_response_is_not_available_without_staff_auth(self):
+        payload = {
+            "source_account_id": str(self.source_account.id),
+            "destination_account_id": str(self.destination_account.id),
+            "amount": 100,
+        }
+        staff_response = self.client.post(
+            "/api/v1/transfers",
+            payload,
+            content_type="application/json",
+            HTTP_X_IDEMPOTENCY_KEY="scoped-idempotency-key",
+        )
+        anonymous_response = Client().post(
+            "/api/v1/transfers",
+            payload,
+            content_type="application/json",
+            HTTP_X_IDEMPOTENCY_KEY="scoped-idempotency-key",
+        )
+        self.assertEqual(staff_response.status_code, 201)
+        self.assertEqual(anonymous_response.status_code, 401)
 
 
 class AccountEndpointsTests(TestCase):
     def setUp(self):
         self.client = Client()
+        authenticate_staff_client(self.client)
         self.account = Account.objects.create(
             user_id=uuid.uuid4(),
             balance=1200,
@@ -96,8 +157,8 @@ class AccountEndpointsTests(TestCase):
         response = self.client.get("/api/v1/accounts/")
         dump_response(response, "account-list")
         self.assertEqual(response.status_code, 200)
-        self.assertIsInstance(response.json(), list)
-        self.assertGreaterEqual(len(response.json()), 1)
+        self.assertIsInstance(response.json()["results"], list)
+        self.assertGreaterEqual(len(response.json()["results"]), 1)
 
     def test_account_detail_returns_account(self):
         response = self.client.get(f"/api/v1/accounts/{self.account.id}/")
@@ -111,10 +172,24 @@ class AccountEndpointsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "ok"})
 
+    def test_account_list_requires_staff_authentication(self):
+        response = Client().get("/api/v1/accounts/")
+        self.assertEqual(response.status_code, 401)
+
+    def test_non_staff_user_cannot_obtain_token(self):
+        user = get_user_model().objects.create_user(username="customer", password="customer-password")
+        response = Client().post(
+            "/api/v1/auth/token/",
+            {"username": user.username, "password": "customer-password"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 401)
+
 
 class LedgerEntryEndpointsTests(TestCase):
     def setUp(self):
         self.client = Client()
+        authenticate_staff_client(self.client)
         self.source_account = Account.objects.create(
             user_id=uuid.uuid4(),
             balance=1000,
@@ -137,8 +212,8 @@ class LedgerEntryEndpointsTests(TestCase):
         response = self.client.get("/api/v1/ledger-entries/")
         dump_response(response, "ledger-entry-list")
         self.assertEqual(response.status_code, 200)
-        self.assertIsInstance(response.json(), list)
-        self.assertGreaterEqual(len(response.json()), 1)
+        self.assertIsInstance(response.json()["results"], list)
+        self.assertGreaterEqual(len(response.json()["results"]), 1)
 
     def test_ledger_entry_detail_returns_entry(self):
         response = self.client.get(f"/api/v1/ledger-entries/{self.entry.id}/")

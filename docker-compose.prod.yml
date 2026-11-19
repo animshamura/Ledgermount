@@ -49,6 +49,25 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      ledger-migrate:
+        condition: service_completed_successfully
+
+  ledger-migrate:
+    build:
+      context: .
+      dockerfile: ./deploy/docker/django/Dockerfile.prod
+    command: ["python", "-m", "django", "migrate", "--run-syncdb", "--noinput"]
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.base
+      - DB_HOST=postgres-primary
+      - DB_NAME=ledger_prod
+      - DB_USER=postgres
+      - DB_PASSWORD=secure_password_here
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    restart: on-failure
 
   celery-worker:
     build:
@@ -68,6 +87,20 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      ledger-migrate:
+        condition: service_completed_successfully
+
+  ledger-console:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      - API_UPSTREAM=api-gateway:8000
+    ports:
+      - "8080:8080"
+    depends_on:
+      - api-gateway
+    restart: unless-stopped
 
 volumes:
   postgres_primary_data:

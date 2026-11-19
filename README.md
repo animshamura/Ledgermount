@@ -1,310 +1,214 @@
-# Industrial Ledger Backend
+# Nuvexa
 
-Industrial Ledger Backend is a transactional, double-entry ledger service built with Django, Django REST Framework, Celery, PostgreSQL, and Redis.
+Nuvexa is the staff operations console for a transactional, double-entry ledger platform. The repository contains a Django REST API, ledger and webhook-outbox services, a React/TypeScript frontend, and local/cluster deployment examples.
 
-## Overview
+> Internal operations software. Account, ledger, and transfer endpoints require a Django staff account. This project is not a customer-facing banking application and is not production-ready without the hardening described below.
 
-This service is designed for systems that demand strong consistency, auditability, idempotent payments, and reliable webhook delivery.
+## Product Screenshots
 
-Key features:
-- Transactional debit/credit ledger transfers
-- Account listing and retrieval APIs
-- Ledger entry listing and retrieval APIs
-- Idempotent transfer requests using `X-Idempotency-Key`
-- Database row locking with `select_for_update()` to prevent concurrent balance corruption
-- Webhook outbox persistence for deferred event delivery
-- Prometheus metrics via `django-prometheus`
-- OpenAPI schema and Swagger UI documentation
-- Kubernetes and Docker Compose deployment examples
+The screenshots below show the Nuvexa interface with illustrative local development data.
+
+<table>
+  <tr>
+    <td><strong>1. Operations overview</strong><br><img src="docs/screenshots/01-operations-overview.png" alt="Nuvexa operations overview with account metrics, activity, and recent entries" width="100%"></td>
+    <td><strong>2. Mobile overview</strong><br><img src="docs/screenshots/02-overview-mobile.png" alt="Nuvexa operations overview on mobile" width="100%"></td>
+  </tr>
+  <tr>
+    <td><strong>3. Account register</strong><br><img src="docs/screenshots/03-accounts.png" alt="Account register with balances and account IDs" width="100%"></td>
+    <td><strong>4. Currency filter</strong><br><img src="docs/screenshots/04-accounts-currency-filter.png" alt="Account register filtered by currency" width="100%"></td>
+  </tr>
+  <tr>
+    <td><strong>5. Account details</strong><br><img src="docs/screenshots/05-account-details.png" alt="Account profile with balance and related activity" width="100%"></td>
+    <td><strong>6. Ledger activity</strong><br><img src="docs/screenshots/06-ledger-entries.png" alt="Paginated ledger entry list" width="100%"></td>
+  </tr>
+  <tr>
+    <td><strong>7. Ledger search</strong><br><img src="docs/screenshots/07-ledger-search.png" alt="Ledger entries filtered by a search query" width="100%"></td>
+    <td><strong>8. Transfer form</strong><br><img src="docs/screenshots/08-transfer-form.png" alt="New transfer form with source, destination, and amount" width="100%"></td>
+  </tr>
+  <tr>
+    <td><strong>9. Transfer review</strong><br><img src="docs/screenshots/09-transfer-review.png" alt="Transfer review and confirmation step" width="100%"></td>
+    <td><strong>10. Staff sign-in</strong><br><img src="docs/screenshots/10-staff-sign-in.png" alt="Nuvexa staff sign-in screen" width="100%"></td>
+  </tr>
+</table>
+
+## Capabilities
+
+- Execute integer-unit transfers between distinct accounts using a database transaction and row locks.
+- Require same-currency source and destination accounts; reject invalid amounts and insufficient funds.
+- Protect write requests with `X-Idempotency-Key` and Redis response caching.
+- Browse and search paginated account and ledger data; filter accounts by currency and export the visible page as CSV.
+- Persist transfer events to a webhook outbox and process them asynchronously with Celery.
+- Require staff token authentication for operational endpoints; throttle staff sign-in attempts.
+- Publish an OpenAPI schema and Prometheus metrics endpoint.
+
+Balances and transfer amounts are stored as integers in ledger units. The API does not perform currency conversion or decimal/minor-unit formatting.
 
 ## Architecture
 
-The project follows a modular service structure with a clear separation of concerns.
-
-- `src/domains/ledger/`: ledger models, validation, and transfer business logic
-- `src/domains/webhooks/`: webhook outbox persistence and Celery delivery processing
-- `src/api/v1/`: REST API views, serializers, and tests
-- `config/`: Django settings, URL routing, and environment configuration
-
-### Transfer workflow
-
-1. Client submits `POST /api/v1/transfers` with source account, destination account, amount, and `X-Idempotency-Key`.
-2. The API validates the payload and forwards it to `LedgerTransferService`.
-3. The service loads accounts using `select_for_update()` inside a transaction.
-4. The source account is debited and the destination account is credited.
-5. A `LedgerEntry` and webhook outbox record are created in the same transaction.
-6. Celery workers later process outbox records and deliver webhook events.
-
-### Design principles
-
-- **Consistency:** transfers execute in one transactional boundary.
-- **Idempotency:** repeated transfer requests with the same key are safe.
-- **Observability:** API schema and Prometheus metrics are exposed.
-- **Modularity:** API, domain logic, and webhook delivery are separated.
-
-## Architecture diagram
-
-```text
-            +-----------------------------+
-            |         API Client          |
-            |   (web, mobile, integration) |
-            +-------------+---------------+
-                          |
-                          v
-            +-------------+---------------+
-            |  Django REST API / Views    |
-            |         src/api/v1/         |
-            +------+------+---------------+
-                   |      |
-                   |      |
-          +--------v--+  +v----------+
-          | Transfer   |  | Read      |
-          | service    |  | endpoints |
-          | src/domains|  | (accounts,|
-          | /ledger/   |  | ledger    |
-          +-----+------+  | entries)  |
-                |         +-----------+
-                v
-    +-----------+---------------------------+
-    | PostgreSQL database                 |
-    | - Account                           |
-    | - LedgerEntry                       |
-    | - idempotency key / indexes         |
-    +-----------+---------------------------+
-                |
-                v
-    +-------------------------------+
-    | Webhook outbox                |
-    | src/domains/webhooks/         |
-    | - deferred delivery queue     |
-    | - retry / status tracking     |
-    +-------------------------------+
-                |
-                v
-    +-------------------------------+
-    | Celery worker                 |
-    | - process outbox records      |
-    | - send webhook events         |
-    +-------------------------------+
+```mermaid
+flowchart LR
+    Browser[Nuvexa staff console] -->|same-origin /api requests| API[Django REST API]
+    API --> Service[Ledger transfer service]
+    Service -->|atomic updates and row locks| DB[(PostgreSQL)]
+    Service -->|persist event in transaction| Outbox[Webhook outbox]
+    Outbox --> Worker[Celery worker]
+    Worker --> Partner[Configured webhook receiver]
+    API --> Cache[(Redis cache and idempotency)]
+    Worker --> Broker[(Redis task broker)]
 ```
 
-## Repository structure
+In local development, Django uses SQLite and an in-memory cache. Production settings use PostgreSQL and Redis. The frontend is served separately and proxies `/api/` requests to Django, avoiding a browser-side API host configuration.
 
-- `config/` — settings, URL routing, and deployment configuration
-- `src/api/v1/` — API views, serializers, and tests
-- `src/domains/ledger/` — ledger domain models and services
-- `src/domains/webhooks/` — webhook outbox persistence and Celery integration
-- `deploy/docker/django/Dockerfile.prod` — production Docker image build
-- `docker-compose.prod.yml` — production-style Docker Compose stack
-- `deploy/k8/` — Kubernetes manifests and `kustomization.yaml`
+## Repository Layout
+
+| Path | Purpose |
+| --- | --- |
+| `frontend/` | React, TypeScript, and Vite staff console; Nginx container for deployment |
+| `config/` | Django settings, URLs, ASGI/WSGI, Celery configuration |
+| `src/api/v1/` | REST views, serializers, and API tests |
+| `src/api/middleware/` | Redis-backed idempotency response middleware |
+| `src/domains/ledger/` | Account and ledger models plus transfer service |
+| `src/domains/webhooks/` | Webhook outbox model and Celery task |
+| `deploy/docker/` | Django production image |
+| `deploy/k8/` | Kubernetes manifests, frontend service, and migration job |
+| `docker-compose.prod.yml` | Local multi-container stack example |
+| `docs/screenshots/` | README product screenshots |
 
 ## Requirements
 
-- Python 3.11
-- Poetry (recommended)
-- PostgreSQL and Redis for production
-- SQLite for local development
+- Python 3.11 or newer
+- Poetry
+- Node.js 22.12 or newer and npm
+- Docker Compose v2 for the container stack
+- PostgreSQL and Redis for deployment; SQLite is configured for local development
 
-## Local development
+## Local Development
 
-Local development uses `config.settings.local` with SQLite and in-memory caching.
-
-1. Install dependencies:
+From the repository root:
 
 ```bash
 poetry install
+export DJANGO_SETTINGS_MODULE=config.settings.local
+poetry run python -m django migrate --run-syncdb --noinput
+poetry run python -m django createsuperuser
+poetry run python -m django runserver 127.0.0.1:8000
 ```
 
-2. Set the local settings module:
-
-```powershell
-$env:DJANGO_SETTINGS_MODULE='config.settings.local'
-```
-
-3. Apply database migrations:
+In a second terminal:
 
 ```bash
-poetry run python -m django migrate
+cd frontend
+npm ci
+npm run dev
 ```
 
-4. Start the development server:
+Open <http://localhost:5173> and sign in with the staff account created above. Vite proxies `/api/` to `http://localhost:8000`.
+
+Run backend tests and build the frontend with:
 
 ```bash
-poetry run python -m django runserver 0.0.0.0:8000
+DJANGO_SETTINGS_MODULE=config.settings.local poetry run python -m django test
+cd frontend
+npm run build
 ```
 
-> This repository does not include `manage.py`; use `python -m django` with `DJANGO_SETTINGS_MODULE`.
+The repository does not include `manage.py`; use `python -m django` with `DJANGO_SETTINGS_MODULE` set. The ledger and webhook apps currently have no migration modules, so `migrate --run-syncdb` is needed to create their tables. Add and commit normal Django migrations before adopting a migration-only production workflow.
 
-## Docker Compose deployment
+## Docker Compose
 
-Start the production-style local stack:
+Start the example stack from the repository root:
 
 ```bash
 docker compose -f docker-compose.prod.yml up --build
 ```
 
-Services started:
-- `postgres-primary` — PostgreSQL
-- `redis` — Redis broker/cache
-- `api-gateway` — Django API
-- `celery-worker` — Celery task worker
+- Nuvexa console: <http://localhost:8080>
+- Django API: <http://localhost:8000>
+- PostgreSQL: `localhost:5432`
 
-The API is available at `http://localhost:8000/`.
+Create a staff account after the API is healthy:
 
-## Kubernetes deployment
+```bash
+docker compose -f docker-compose.prod.yml exec api-gateway python -m django createsuperuser
+```
 
-A Kubernetes example is provided in `deploy/k8/`.
+The Compose file uses example credentials and exposes database/cache ports for local use. Replace these settings, use managed secrets, restrict network exposure, and configure HTTPS before any production deployment.
 
-Build the application image:
+## Kubernetes
+
+Build the API and frontend images, then apply database dependencies and run the migration job before rolling out the application:
 
 ```bash
 docker build -t ledger-api:latest -f deploy/docker/django/Dockerfile.prod .
-```
-
-Apply the manifests with Kustomize:
-
-```bash
+docker build -t ledger-console:latest -f frontend/Dockerfile frontend/
+kubectl apply -f deploy/k8/postgres.yaml -f deploy/k8/redis.yaml
+kubectl apply -f deploy/k8/ledger-migrate.yaml
+kubectl wait --for=condition=complete job/ledger-migrate --timeout=5m
 kubectl apply -k deploy/k8/
 ```
 
-## Environment variables
+The console is exposed as a `ClusterIP` service on port `8080`; publish it through an ingress or use `kubectl port-forward service/ledger-console 8080:8080`. The sample manifests contain placeholder credentials and are deployment examples, not hardened production manifests. See [`deploy/k8/README.md`](deploy/k8/README.md).
 
-Production settings use:
+## API Reference
 
-- `DJANGO_SETTINGS_MODULE=config.settings.base`
-- `DB_HOST` (default: `postgres-primary`)
-- `DB_NAME` (default: `ledger_prod`)
-- `DB_USER` (default: `postgres`)
-- `DB_PASSWORD` (default: `postgres`)
-- `DB_PORT` (default: `5432`)
-- `REDIS_URL` (default: `redis://redis:6379/0`)
-- `CELERY_BROKER_URL` (default: `redis://redis:6379/1`)
-- `CELERY_RESULT_BACKEND` (recommended: `redis://redis:6379/2`)
+All operational routes below require a staff token, except health and token issuance. Send tokens using `Authorization: Token <token>`. List routes return a page-number response with `count`, `next`, `previous`, and `results`; the default page size is 25.
 
-## API Endpoints
+| Method | Route | Description |
+| --- | --- | --- |
+| `GET` | `/api/v1/health/` | Public health probe |
+| `POST` | `/api/v1/auth/token/` | Exchange staff username/password for a token; limited to 5 requests per minute |
+| `POST` | `/api/v1/auth/logout/` | Revoke the current staff token |
+| `GET` | `/api/v1/accounts/` | List accounts |
+| `GET` | `/api/v1/accounts/<uuid:id>/` | Retrieve an account |
+| `GET` | `/api/v1/ledger-entries/` | List ledger entries |
+| `GET` | `/api/v1/ledger-entries/<uuid:id>/` | Retrieve a ledger entry |
+| `POST` | `/api/v1/transfers` | Execute a transfer; requires `X-Idempotency-Key` |
+| `GET` | `/api/schema/` | OpenAPI schema |
+| `GET` | `/api/schema/swagger-ui/` | Swagger UI |
+| `GET` | `/metrics` | Prometheus metrics |
 
-### Health
-
-`GET /api/v1/health/`
-
-Response:
-
-```json
-{
-  "status": "ok"
-}
-```
-
-### Transfer
-
-`POST /api/v1/transfers`
-
-Headers:
-- `Content-Type: application/json`
-- `X-Idempotency-Key: <unique-key>`
-
-Request body:
-
-```json
-{
-  "source_account_id": "<uuid>",
-  "destination_account_id": "<uuid>",
-  "amount": 100
-}
-```
-
-Success response:
-
-```json
-{
-  "transaction_id": "<uuid>",
-  "status": "AUTHORIZED",
-  "message": "Funds successfully captured and settled globally."
-}
-```
-
-### Account endpoints
-
-- `GET /api/v1/accounts/` — list accounts
-- `GET /api/v1/accounts/<uuid:id>/` — account details
-
-### Ledger entry endpoints
-
-- `GET /api/v1/ledger-entries/` — list ledger entries
-- `GET /api/v1/ledger-entries/<uuid:id>/` — ledger entry details
-
-## Example requests
-
-List accounts:
+### Obtain a token
 
 ```bash
-curl http://localhost:8000/api/v1/accounts/
+curl -X POST http://localhost:8000/api/v1/auth/token/ \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"<staff-username>","password":"<staff-password>"}'
 ```
 
-Get a single account:
+The response contains a `token` string. Keep it secret and use it in the authorization header below.
+
+### Transfer funds
 
 ```bash
-curl http://localhost:8000/api/v1/accounts/<uuid>/
+curl -X POST http://localhost:8000/api/v1/transfers \
+  -H 'Authorization: Token <token>' \
+  -H 'Content-Type: application/json' \
+  -H 'X-Idempotency-Key: <unique-request-key>' \
+  -d '{"source_account_id":"<source-uuid>","destination_account_id":"<destination-uuid>","amount":100}'
 ```
 
-List ledger entries:
+A successful request returns HTTP `201` with a transaction ID and `AUTHORIZED` status. Amounts must be positive integers, account IDs must differ, both accounts must exist, use the same currency, and the source account must have sufficient funds.
 
-```bash
-curl http://localhost:8000/api/v1/ledger-entries/
-```
+## Configuration
 
-Get a single ledger entry:
+Production settings read the following environment variables:
 
-```bash
-curl http://localhost:8000/api/v1/ledger-entries/<uuid>/
-```
+| Variable | Purpose |
+| --- | --- |
+| `DJANGO_SETTINGS_MODULE` | Settings module; production uses `config.settings.base` |
+| `DJANGO_SECRET_KEY` | Django signing secret; provide a unique secret outside local development |
+| `DB_HOST`, `DB_PORT` | PostgreSQL endpoint |
+| `DB_NAME`, `DB_USER`, `DB_PASSWORD` | PostgreSQL database credentials |
+| `REDIS_URL` | Django cache URL |
+| `CELERY_BROKER_URL` | Celery broker URL |
+| `CELERY_RESULT_BACKEND` | Optional Celery result backend |
 
-## Swagger / API documentation
+Do not use the example database passwords or the fallback Django secret in a deployed environment. Use a secret manager and terminate TLS in a trusted ingress or reverse proxy.
 
-- `http://localhost:8000/api/schema/` — OpenAPI schema
-- `http://localhost:8000/api/schema/swagger-ui/` — Swagger UI
+## Operational Notes
 
-## Tests
-
-Run tests with local settings:
-
-```powershell
-$env:DJANGO_SETTINGS_MODULE='config.settings.local'
-poetry run python -m django test
-```
-
-Sample test output includes response debug output for request status and JSON body:
-
-```text
-RESPONSE [transfer-success]: status=201 body={'transaction_id': '...', 'status': 'AUTHORIZED', 'message': 'Funds successfully captured and settled globally.'}
-RESPONSE [account-list]: status=200 body=[{...}]
-RESPONSE [health-check]: status=200 body={'status': 'ok'}
-...
-```
-
-The suite includes tests for transfer behavior, account endpoints, ledger entries, and health checks.
-
-## Webhooks
-
-Transfer completion creates webhook outbox records in `src/domains/webhooks/models/outbox.py`.
-
-Webhook delivery is processed asynchronously by Celery.
-
-Example worker command:
-
-```bash
-celery -A config worker --loglevel=info -Q webhooks
-```
-
-## Metrics
-
-Prometheus metrics are exposed through `django-prometheus` and can be scraped by an observability stack.
-
-
-`django-prometheus` provides application monitoring endpoints exposed by Django.
-
-## Notes
-
-- No `manage.py` file is present; use `python -m django` with `DJANGO_SETTINGS_MODULE`.
-- Local development uses SQLite through `config.settings.local`.
-- Production deployment expects PostgreSQL and Redis.
+- The console stores its staff token in browser `sessionStorage` and clears it on sign-out. Use HTTPS for all non-local access.
+- Staff authorization currently relies on Django's `is_staff` flag. There is no customer login or per-account/tenant authorization.
+- CSV export and search/filter controls operate on the currently loaded page; they do not fetch or export every record.
+- Webhook delivery currently targets a hard-coded example partner URL in `src/domains/webhooks/tasks.py`. Configure the real destination and signing/verification policy before enabling external delivery.
+- PostgreSQL/Redis configuration and the included Compose/Kubernetes manifests are starting points. Review credentials, TLS, backups, network policy, resource sizing, observability, and deployment rollout strategy for the target environment.
