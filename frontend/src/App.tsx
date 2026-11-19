@@ -152,7 +152,7 @@ function Login({ onLogin }: { onLogin: (username: string, password: string) => P
     <main className="login-shell">
       <section className="login-panel">
         <div className="brand-mark"><Landmark size={21} strokeWidth={2.2} /></div>
-        <p className="eyebrow">NUVEXA / OPERATIONS</p>
+        <p className="eyebrow">LEDGERMOUNT / OPERATIONS</p>
         <h1>Staff sign in</h1>
         <p className="login-copy">Authenticate with your ledger operations account.</p>
         <form className="login-form" onSubmit={submit}>
@@ -392,9 +392,9 @@ function App() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <a aria-label="Nuvexa operations home" className="brand" href="#home">
+        <a aria-label="Ledgermount operations home" className="brand" href="#home">
           <span className="brand-mark"><Landmark size={20} strokeWidth={2.2} /></span>
-          <span className="brand-name">Nuvexa</span>
+          <span className="brand-name">Ledgermount</span>
         </a>
         <div className="sidebar-label">OPERATIONS</div>
         <nav aria-label="Operations views" className="side-nav">

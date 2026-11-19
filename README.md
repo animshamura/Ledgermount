@@ -1,17 +1,17 @@
-# Nuvexa
+# Ledgermount
 
-Nuvexa is the staff operations console for a transactional, double-entry ledger platform. The repository contains a Django REST API, ledger and webhook-outbox services, a React/TypeScript frontend, and local/cluster deployment examples.
+Ledgermount is the staff operations console for a transactional, double-entry ledger platform. The repository contains a Django REST API, ledger and webhook-outbox services, a React/TypeScript frontend, and local/cluster deployment examples.
 
 > Internal operations software. Account, ledger, and transfer endpoints require a Django staff account. This project is not a customer-facing banking application and is not production-ready without the hardening described below.
 
 ## Product Screenshots
 
-The screenshots below show the Nuvexa interface with illustrative local development data.
+The screenshots below show the Ledgermount interface with illustrative local development data.
 
 <table>
   <tr>
-    <td><strong>1. Operations overview</strong><br><img src="docs/screenshots/01-operations-overview.png" alt="Nuvexa operations overview with account metrics, activity, and recent entries" width="100%"></td>
-    <td><strong>2. Mobile overview</strong><br><img src="docs/screenshots/02-overview-mobile.png" alt="Nuvexa operations overview on mobile" width="100%"></td>
+    <td><strong>1. Operations overview</strong><br><img src="docs/screenshots/01-operations-overview.png" alt="Ledgermount operations overview with account metrics, activity, and recent entries" width="100%"></td>
+    <td><strong>2. Mobile overview</strong><br><img src="docs/screenshots/02-overview-mobile.png" alt="Ledgermount operations overview on mobile" width="100%"></td>
   </tr>
   <tr>
     <td><strong>3. Account register</strong><br><img src="docs/screenshots/03-accounts.png" alt="Account register with balances and account IDs" width="100%"></td>
@@ -27,7 +27,7 @@ The screenshots below show the Nuvexa interface with illustrative local developm
   </tr>
   <tr>
     <td><strong>9. Transfer review</strong><br><img src="docs/screenshots/09-transfer-review.png" alt="Transfer review and confirmation step" width="100%"></td>
-    <td><strong>10. Staff sign-in</strong><br><img src="docs/screenshots/10-staff-sign-in.png" alt="Nuvexa staff sign-in screen" width="100%"></td>
+    <td><strong>10. Staff sign-in</strong><br><img src="docs/screenshots/10-staff-sign-in.png" alt="Ledgermount staff sign-in screen" width="100%"></td>
   </tr>
 </table>
 
@@ -47,7 +47,7 @@ Balances and transfer amounts are stored as integers in ledger units. The API do
 
 ```mermaid
 flowchart LR
-    Browser[Nuvexa staff console] -->|same-origin /api requests| API[Django REST API]
+    Browser[Ledgermount staff console] -->|same-origin /api requests| API[Django REST API]
     API --> Service[Ledger transfer service]
     Service -->|atomic updates and row locks| DB[(PostgreSQL)]
     Service -->|persist event in transaction| Outbox[Webhook outbox]
@@ -122,7 +122,7 @@ Start the example stack from the repository root:
 docker compose -f docker-compose.prod.yml up --build
 ```
 
-- Nuvexa console: <http://localhost:8080>
+- Ledgermount console: <http://localhost:8080>
 - Django API: <http://localhost:8000>
 - PostgreSQL: `localhost:5432`
 
