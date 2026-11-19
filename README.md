@@ -1,6 +1,6 @@
 # Ledgermount
 
-Ledgermount is the staff operations console for a transactional, double-entry ledger platform. The repository contains a Django REST API, ledger and webhook-outbox services, a React/TypeScript frontend, and local/cluster deployment examples.
+Ledgermount is the staff operations console for a transactional, double-entry ledger platform. The repository contains a Django REST API, ledger and webhook services, a React/TypeScript frontend, and local/cluster deployment examples.
 
 > Internal operations software. Account, ledger, and transfer endpoints require a Django staff account. This project is not a customer-facing banking application and is not production-ready without the hardening described below.
 
@@ -89,7 +89,7 @@ From the repository root:
 ```bash
 poetry install
 export DJANGO_SETTINGS_MODULE=config.settings.local
-poetry run python -m django migrate --run-syncdb --noinput
+poetry run python manage.py migrate
 poetry run python -m django createsuperuser
 poetry run python -m django runserver 127.0.0.1:8000
 ```
@@ -112,7 +112,7 @@ cd frontend
 npm run build
 ```
 
-The repository does not include `manage.py`; use `python -m django` with `DJANGO_SETTINGS_MODULE` set. The ledger and webhook apps currently have no migration modules, so `migrate --run-syncdb` is needed to create their tables. Add and commit normal Django migrations before adopting a migration-only production workflow.
+Use `python manage.py` for standard Django commands. Ledger and webhook migrations are committed, so use `python manage.py migrate --noinput` in production and local setup.
 
 ## Docker Compose
 
@@ -212,3 +212,17 @@ Do not use the example database passwords or the fallback Django secret in a dep
 - CSV export and search/filter controls operate on the currently loaded page; they do not fetch or export every record.
 - Webhook delivery currently targets a hard-coded example partner URL in `src/domains/webhooks/tasks.py`. Configure the real destination and signing/verification policy before enabling external delivery.
 - PostgreSQL/Redis configuration and the included Compose/Kubernetes manifests are starting points. Review credentials, TLS, backups, network policy, resource sizing, observability, and deployment rollout strategy for the target environment.
+
+Use `python manage.py` for standard Django commands. Ledger and webhook migrations are committed and standard Django management commands are available through `python manage.py`.
+
+## Environment Templates
+
+Use `.env.example` for Docker/local development and `.env.vercel.example` for Vercel. Copy either template to a real ignored file before filling credentials:
+
+```bash
+cp .env.example .env
+# or
+cp .env.vercel.example .env.vercel
+```
+
+Fill placeholders locally; for Vercel, enter the values directly in **Project → Settings → Environment Variables**. Never commit `.env`, `.env.local`, `.env.production`, or `.env.vercel`.

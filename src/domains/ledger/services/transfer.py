@@ -50,4 +50,11 @@ class LedgerTransferService:
                     "timestamp": ledger_entry.created_at.isoformat()
                 }
             )
+
+            transaction.on_commit(LedgerTransferService._enqueue_webhook_outbox)
             return ledger_entry
+
+    @staticmethod
+    def _enqueue_webhook_outbox() -> None:
+        from src.domains.webhooks.tasks import process_outbox_queue
+        process_outbox_queue.delay()

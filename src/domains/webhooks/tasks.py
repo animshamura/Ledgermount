@@ -1,3 +1,4 @@
+import os
 import requests
 from celery import shared_task
 from django.db import transaction
@@ -15,8 +16,14 @@ def process_outbox_queue(self):
         WebhookOutbox.objects.filter(id__in=event_ids).update(status='PROCESSING', last_attempt=timezone.now())
 
     for event in pending_events:
+        webhook_url = os.getenv("WEBHOOK_URL")
+        if not webhook_url:
+            event.status = 'FAILED'
+            event.retry_count += 1
+            event.save(update_fields=['status', 'retry_count', 'last_attempt'])
+            continue
         try:
-            response = requests.post("https://api.externalpartner.com/v1/webhooks", json=event.payload, timeout=5)
+            response = requests.post(webhook_url, json=event.payload, timeout=5)
             event.status = 'COMPLETED' if response.status_code == 200 else 'FAILED'
             if event.status == 'FAILED': event.retry_count += 1
         except requests.RequestException:

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "ledgermount_frontend": {
+      "root": "frontend",
+      "framework": "vite"
+    },
+    "ledgermount_api": {
+      "root": ".",
+      "framework": "django",
+      "entrypoint": "config.wsgi:application"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": {
+        "service": "ledgermount_api"
+      }
+    },
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "ledgermount_frontend"
+      }
+    }
+  ]
+}

@@ -56,7 +56,7 @@ services:
     build:
       context: .
       dockerfile: ./deploy/docker/django/Dockerfile.prod
-    command: ["python", "-m", "django", "migrate", "--run-syncdb", "--noinput"]
+    command: ["python", "-m", "django", "migrate", "--noinput"]
     environment:
       - DJANGO_SETTINGS_MODULE=config.settings.base
       - DB_HOST=postgres-primary

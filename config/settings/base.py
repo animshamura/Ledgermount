@@ -1,10 +1,15 @@
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "prod-hardened-fallback-key")
 DEBUG = False
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.getenv("DJANGO_ALLOWED_HOSTS", ".vercel.app,localhost,127.0.0.1").split(",")
+    if host.strip()
+]
 
 INSTALLED_APPS = [
     'django.contrib.auth',
@@ -33,16 +38,33 @@ WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 DATABASE_ROUTERS = ['config.db_routers.cqrs_router.PrimaryReplicaRouter']
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv("DB_NAME", "ledger_prod"),
-        'USER': os.getenv("DB_USER", "postgres"),
-        'PASSWORD': os.getenv("DB_PASSWORD", "postgres"),
-        'HOST': os.getenv("DB_HOST", "postgres-primary"),
-        'PORT': os.getenv("DB_PORT", "5432"),
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if DATABASE_URL:
+    parsed_database = urlparse(DATABASE_URL)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': parsed_database.path.lstrip('/'),
+            'USER': parsed_database.username,
+            'PASSWORD': parsed_database.password,
+            'HOST': parsed_database.hostname,
+            'PORT': parsed_database.port or 5432,
+            'OPTIONS': {'sslmode': os.getenv('DB_SSLMODE', 'require')},
+            'CONN_MAX_AGE': int(os.getenv('DB_CONN_MAX_AGE', '60')),
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv("DB_NAME", "ledger_prod"),
+            'USER': os.getenv("DB_USER", "postgres"),
+            'PASSWORD': os.getenv("DB_PASSWORD", "postgres"),
+            'HOST': os.getenv("DB_HOST", "postgres-primary"),
+            'PORT': os.getenv("DB_PORT", "5432"),
+        }
+    }
 
 CACHES = {
     'default': {

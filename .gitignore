@@ -36,6 +36,8 @@ node_modules/
 # Environment files
 .env
 .env.*
+!.env.example
+!.env.vercel.example
 
 # Docker
 docker-compose.override.yml
