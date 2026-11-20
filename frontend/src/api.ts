@@ -23,6 +23,16 @@ export type LedgerEntry = {
   created_at: string;
 };
 
+export type WebhookEvent = {
+  id: string;
+  event_type: string;
+  payload: Record<string, unknown>;
+  status: string;
+  retry_count: number;
+  last_attempt: string | null;
+  created_at: string;
+};
+
 export type Page<T> = {
   count: number;
   next: string | null;
@@ -104,6 +114,15 @@ export const api = {
     return request<StaffAccount>(`/api/v1/staff/accounts/${id}/`, {
       method: 'PATCH',
       body: JSON.stringify(fields),
+    });
+  },
+  webhookEvents(page: number = 1) {
+    return request<Page<WebhookEvent>>(`/api/v1/webhooks/?page=${page}`);
+  },
+  createAccount(userId: string, balance: number, currency: string) {
+    return request<Account>('/api/v1/accounts/create/', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId, balance, currency }),
     });
   },
 };

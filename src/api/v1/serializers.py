@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from src.domains.ledger.models.journal import Account, LedgerEntry
+from src.domains.webhooks.models.outbox import WebhookOutbox
 
 
 class AccountSerializer(serializers.ModelSerializer):
@@ -79,3 +80,32 @@ class StaffAccountSerializer(serializers.Serializer):
             instance.is_active = validated_data["is_active"]
         instance.save()
         return instance
+
+
+class AccountCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Account
+        fields = ['id', 'user_id', 'balance', 'currency', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_balance(self, value):
+        if value < 0:
+            raise serializers.ValidationError("Balance must be zero or greater.")
+        return value
+
+    def validate_currency(self, value):
+        return value.strip().upper()
+
+
+class WebhookEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WebhookOutbox
+        fields = [
+            'id',
+            'event_type',
+            'payload',
+            'status',
+            'retry_count',
+            'last_attempt',
+            'created_at',
+        ]

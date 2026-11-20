@@ -240,6 +240,12 @@ tbody tr:hover { background: #fbfcfa; }
 .orbit-one { right: -152px; bottom: 8%; box-shadow: 0 0 0 35px rgb(81 120 207 / 4%), 0 0 0 70px rgb(81 120 207 / 3%); }
 .orbit-two { right: -75px; bottom: 18%; width: 226px; height: 226px; border-color: rgb(105 219 223 / 27%); }
 
+.page-actions { display: flex; align-items: center; gap: 8px; }
+.status-badge { display: inline-flex; min-width: 72px; justify-content: center; padding: 5px 7px; border-radius: 999px; font-family: var(--mono); font-size: 9px; font-weight: 600; }
+.status-pending, .status-processing { background: #fff4d8; color: #946b1f; }
+.status-completed { background: #def4ee; color: #18765e; }
+.status-failed { background: #fde7e1; color: #a44e3a; }
+
 .spin { animation: spin 900ms linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }

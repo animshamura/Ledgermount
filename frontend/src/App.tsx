@@ -17,13 +17,15 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  RadioTower,
+  Plus,
   TrendingUp,
   WalletCards,
   X,
 } from "lucide-react";
-import { Account, api, LedgerEntry, Page, StaffAccount, TOKEN_KEY } from "./api";
+import { Account, api, LedgerEntry, Page, StaffAccount, WebhookEvent, TOKEN_KEY } from "./api";
 
-type View = "overview" | "accounts" | "entries" | "staff";
+type View = "overview" | "accounts" | "entries" | "webhooks";
 
 const emptyPage = <T,>(): Page<T> => ({ count: 0, next: null, previous: null, results: [] });
 
@@ -352,6 +354,44 @@ function StaffAccountsDialog({ onClose, onChanged }: { onClose: () => void; onCh
   );
 }
 
+function CreateAccountDialog({ onClose, onComplete }: { onClose: () => void; onComplete: () => Promise<void> }) {
+  const [userId, setUserId] = useState<string>(crypto.randomUUID());
+  const [balance, setBalance] = useState("0");
+  const [currency, setCurrency] = useState("USD");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      await api.createAccount(userId, Number(balance), currency.trim().toUpperCase());
+      await onComplete();
+      onClose();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to create account.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section aria-modal="true" aria-labelledby="create-account-title" className="transfer-dialog" role="dialog">
+        <div className="dialog-heading"><div><p className="eyebrow">LEDGER ACCOUNT</p><h2 id="create-account-title">Create account</h2></div><button aria-label="Close create account" className="icon-button" onClick={onClose} type="button"><X size={19} /></button></div>
+        <form onSubmit={submit}>
+          <label>User ID<input required value={userId} onChange={(event) => setUserId(event.target.value)} /></label>
+          <label>Opening balance<input inputMode="numeric" min="0" required step="1" type="number" value={balance} onChange={(event) => setBalance(event.target.value)} /></label>
+          <label>Currency<input maxLength={3} pattern="[A-Za-z]{3}" required value={currency} onChange={(event) => setCurrency(event.target.value)} /></label>
+          {error && <p className="form-error"><AlertCircle size={16} />{error}</p>}
+          <div className="dialog-actions"><button className="button button-quiet" onClick={onClose} type="button">Cancel</button><button className="button button-primary" disabled={busy} type="submit">{busy ? <LoaderCircle className="spin" size={16} /> : <Plus size={16} />}{busy ? "Creating" : "Create account"}</button></div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
 function App() {
   const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_KEY));
   const [view, setView] = useState<View>("overview");
@@ -370,6 +410,8 @@ function App() {
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [isSuperuser, setIsSuperuser] = useState(() => sessionStorage.getItem("industrial-ledger-is-superuser") === "true");
   const [showStaffAccounts, setShowStaffAccounts] = useState(false);
+  const [showCreateAccount, setShowCreateAccount] = useState(false);
+  const [webhooks, setWebhooks] = useState<Page<WebhookEvent>>(emptyPage());
 
   useEffect(() => {
     if (!token) return;
@@ -380,10 +422,12 @@ function App() {
     Promise.all([
       api.accounts(pageNumber, controller.signal),
       api.entries(pageNumber, controller.signal),
-    ]).then(([accountPage, entryPage]) => {
+      api.webhookEvents(pageNumber),
+    ]).then(([accountPage, entryPage, webhookPage]) => {
       setConnectionStatus("connected");
       setAccounts(accountPage);
       setEntries(entryPage);
+      setWebhooks(webhookPage);
     }).catch((reason: unknown) => {
       if (!controller.signal.aborted) {
         setConnectionStatus("offline");
@@ -440,9 +484,14 @@ function App() {
     : new Date(right.created_at).getTime() - new Date(left.created_at).getTime());
   const isAccounts = view === "accounts";
   const isOverview = view === "overview";
-  const currentCount = isAccounts ? accounts.count : entries.count;
-  const canGoNext = isAccounts ? Boolean(accounts.next) : Boolean(entries.next);
-  const canGoPrevious = isAccounts ? Boolean(accounts.previous) : Boolean(entries.previous);
+  const isWebhooks = view === "webhooks";
+  const webhookRows = webhooks.results.filter((event) => {
+    const query = search.trim().toLowerCase();
+    return !query || event.id.toLowerCase().includes(query) || event.event_type.toLowerCase().includes(query) || event.status.toLowerCase().includes(query);
+  });
+  const currentCount = isAccounts ? accounts.count : isWebhooks ? webhooks.count : entries.count;
+  const canGoNext = isAccounts ? Boolean(accounts.next) : isWebhooks ? Boolean(webhooks.next) : Boolean(entries.next);
+  const canGoPrevious = isAccounts ? Boolean(accounts.previous) : isWebhooks ? Boolean(webhooks.previous) : Boolean(entries.previous);
   const currencyTotals = accounts.results.reduce<Record<string, { count: number; balance: number }>>((totals, account) => {
     const currencyTotal = totals[account.currency] ?? { count: 0, balance: 0 };
     currencyTotal.count += 1;
@@ -491,6 +540,9 @@ function App() {
           <button aria-current={view === "entries" ? "page" : undefined} className={view === "entries" ? "nav-item active" : "nav-item"} onClick={() => { setView("entries"); setPageNumber(1); setSearch(""); }}>
             <ArrowLeftRight size={18} /> Ledger entries
           </button>
+          <button aria-current={view === "webhooks" ? "page" : undefined} className={view === "webhooks" ? "nav-item active" : "nav-item"} onClick={() => { setView("webhooks"); setPageNumber(1); setSearch(""); }}>
+            <RadioTower size={18} /> Webhooks
+          </button>
           {isSuperuser && <button className="nav-item" onClick={() => setShowStaffAccounts(true)}>
             <ShieldCheck size={18} /> Staff accounts
           </button>}
@@ -504,7 +556,7 @@ function App() {
 
       <main className="main-area">
         <header className="topbar">
-          <div className="breadcrumb"><span>Operations</span><span className="breadcrumb-slash">/</span><strong>{isOverview ? "Overview" : isAccounts ? "Accounts" : "Ledger entries"}</strong></div>
+          <div className="breadcrumb"><span>Operations</span><span className="breadcrumb-slash">/</span><strong>{isOverview ? "Overview" : isAccounts ? "Accounts" : isWebhooks ? "Webhook monitor" : "Ledger entries"}</strong></div>
           <div className="topbar-actions">
             <span className="secure-label"><ShieldCheck size={15} /> STAFF ACCESS</span>
             <button aria-label="Refresh ledger data" className="icon-button" disabled={loading} onClick={() => setRefreshKey((current) => current + 1)} title="Refresh data"><RefreshCw className={loading ? "spin" : ""} size={17} /></button>
@@ -515,10 +567,13 @@ function App() {
           <div className="page-heading">
             <div>
               <p className="eyebrow">TRANSACTIONAL LEDGER / OPERATIONS</p>
-              <h1>{isOverview ? "Operations overview" : isAccounts ? "Accounts" : "Ledger entries"}</h1>
-              <p className="page-subtitle">{isOverview ? "A live view of account coverage and recorded movement." : isAccounts ? "Review account balances and move funds between accounts." : "Audit completed transfers and their account movements."}</p>
+              <h1>{isOverview ? "Operations overview" : isAccounts ? "Accounts" : isWebhooks ? "Webhook monitor" : "Ledger entries"}</h1>
+              <p className="page-subtitle">{isOverview ? "A live view of account coverage and recorded movement." : isAccounts ? "Review, create, and inspect ledger accounts." : isWebhooks ? "Monitor outbox delivery status and retry activity." : "Audit completed transfers and their account movements."}</p>
             </div>
-            <button className="button button-primary new-transfer" onClick={() => { setSuccess(""); setShowTransfer(true); }}><ArrowLeftRight size={17} /> New transfer</button>
+            <div className="page-actions">
+              {isAccounts && <button className="button button-quiet" onClick={() => setShowCreateAccount(true)}><Plus size={17} /> Create account</button>}
+              <button className="button button-primary new-transfer" onClick={() => { setSuccess(""); setShowTransfer(true); }}><ArrowLeftRight size={17} /> New transfer</button>
+            </div>
           </div>
 
           {error && <div className="notice notice-error"><AlertCircle size={17} />{error}<button aria-label="Dismiss error" onClick={() => setError("")}><X size={16} /></button></div>}
@@ -583,6 +638,24 @@ function App() {
                   </table>
                 </div>
               ) : <div className="empty-state"><SearchX size={20} /><strong>No matching accounts</strong><span>Adjust your search or currency filter.</span></div>
+            ) : isWebhooks ? (
+              webhookRows.length ? (
+                <div className="table-scroll">
+                  <table>
+                    <thead><tr><th>EVENT</th><th>TYPE</th><th>STATUS</th><th>RETRIES</th><th>LAST ATTEMPT</th><th>CREATED</th></tr></thead>
+                    <tbody>{webhookRows.map((event) => (
+                      <tr key={event.id}>
+                        <td><span className="entry-id">{event.id}</span></td>
+                        <td className="mono muted-cell">{event.event_type}</td>
+                        <td><span className={`status-badge status-${event.status.toLowerCase()}`}>{event.status}</span></td>
+                        <td className="mono">{event.retry_count}</td>
+                        <td className="date-cell">{event.last_attempt ? timestamp(event.last_attempt) : "Not attempted"}</td>
+                        <td className="date-cell">{timestamp(event.created_at)}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              ) : <div className="empty-state"><RadioTower size={20} /><strong>{search ? "No matching webhook events" : "No webhook events yet"}</strong><span>Transfer events will appear here as they enter the outbox.</span></div>
             ) : entryRows.length ? (
               <div className="table-scroll">
                 <table>
@@ -613,6 +686,7 @@ function App() {
         </div>
       </main>
       {showTransfer && <TransferDialog accounts={accounts.results} onClose={() => setShowTransfer(false)} onComplete={completeTransfer} />}
+      {showCreateAccount && <CreateAccountDialog onClose={() => setShowCreateAccount(false)} onComplete={async () => { setRefreshKey((current) => current + 1); setSuccess("Account created successfully."); }} />}
       {selectedAccount && <AccountDetailDialog account={selectedAccount} entries={entries.results} onClose={() => setSelectedAccount(null)} />}
       {showStaffAccounts && <StaffAccountsDialog onClose={() => setShowStaffAccounts(false)} onChanged={setSuccess} />}
     </div>

@@ -10,6 +10,8 @@ from src.api.v1.views import (
     StaffLogoutView,
     StaffAccountListCreateView,
     StaffAccountDetailView,
+    AccountCreateView,
+    WebhookEventListView,
 )
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
@@ -27,4 +29,6 @@ urlpatterns = [
     path('api/v1/ledger-entries/<uuid:id>/', LedgerEntryDetailView.as_view(), name='ledger-entry-detail'),
     path('api/v1/staff/accounts/', StaffAccountListCreateView.as_view(), name='staff-account-list-create'),
     path('api/v1/staff/accounts/<int:id>/', StaffAccountDetailView.as_view(), name='staff-account-detail'),
+    path('api/v1/accounts/create/', AccountCreateView.as_view(), name='account-create'),
+    path('api/v1/webhooks/', WebhookEventListView.as_view(), name='webhook-event-list'),
 ]

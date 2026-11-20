@@ -66,12 +66,31 @@ else:
         }
     }
 
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': os.getenv("REDIS_URL", "redis://redis:6379/0"),
+REDIS_URL = os.getenv("REDIS_URL", "").strip()
+parsed_redis = urlparse(REDIS_URL) if REDIS_URL else None
+internal_redis_hosts = {"redis", "localhost", "127.0.0.1", "host"}
+use_external_redis = bool(
+    parsed_redis
+    and parsed_redis.scheme in {"redis", "rediss"}
+    and parsed_redis.hostname
+    and parsed_redis.hostname not in internal_redis_hosts
+)
+
+CACHES = (
+    {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_URL,
+        }
     }
-}
+    if use_external_redis
+    else {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'ledger-vercel-cache',
+        }
+    }
+)
 
 REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': ['rest_framework.renderers.JSONRenderer'],
