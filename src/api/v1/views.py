@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from django.core.exceptions import ValidationError as DjangoValidationError
 from src.domains.ledger.services.transfer import LedgerTransferService
-from src.domains.ledger.models.journal import Account, LedgerEntry
+from src.domains.ledger.models.journal import Account, AuditLog, LedgerEntry
 from .serializers import (
     AccountSerializer,
     AccountCreateSerializer,
@@ -16,7 +16,9 @@ from .serializers import (
     TransferRequestSerializer,
     StaffAccountSerializer,
     WebhookEventSerializer,
+    AuditLogSerializer,
 )
+from src.domains.ledger.services.audit import record_audit
 from src.domains.webhooks.models.outbox import WebhookOutbox
 
 
@@ -39,6 +41,7 @@ class LedgerTransferView(APIView):
                 amount=transfer['amount'],
                 idempotency_key=idempotency_key
             )
+            record_audit(request.user.username, "transfer_execute", success=True, object_type="LedgerEntry", object_id=ledger_entry.id, metadata={"source_account_id": str(transfer['source_account_id']), "destination_account_id": str(transfer['destination_account_id']), "amount": transfer['amount']}, request=request)
             return Response({
                 "transaction_id": str(ledger_entry.id),
                 "status": "AUTHORIZED",
@@ -68,9 +71,11 @@ class StaffTokenView(APIView):
         password = request.data.get("password")
         user = authenticate(request, username=username, password=password)
         if user is None or not user.is_staff:
+            record_audit(username or "", "staff_login", success=False, object_type="StaffAccount", request=request)
             return Response({"error": "Invalid staff credentials."}, status=status.HTTP_401_UNAUTHORIZED)
 
         token, _ = Token.objects.get_or_create(user=user)
+        record_audit(user.username, "staff_login", success=True, object_type="StaffAccount", object_id=user.pk, request=request)
         return Response({"token": token.key, "is_superuser": user.is_superuser}, status=status.HTTP_200_OK)
 
 
@@ -78,7 +83,9 @@ class StaffLogoutView(APIView):
     permission_classes = [IsAdminUser]
 
     def post(self, request, *args, **kwargs):
+        username = request.user.username
         request.auth.delete()
+        record_audit(username, "staff_logout", success=True, object_type="StaffAccount", object_id=request.user.pk, request=request)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -136,3 +143,9 @@ class AccountCreateView(generics.CreateAPIView):
 class WebhookEventListView(generics.ListAPIView):
     queryset = WebhookOutbox.objects.all().order_by('-created_at')
     serializer_class = WebhookEventSerializer
+
+
+class AuditLogListView(generics.ListAPIView):
+    permission_classes = [IsSuperuser]
+    queryset = AuditLog.objects.all().order_by('-created_at')
+    serializer_class = AuditLogSerializer

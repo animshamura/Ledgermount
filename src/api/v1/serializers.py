@@ -1,6 +1,6 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
-from src.domains.ledger.models.journal import Account, LedgerEntry
+from src.domains.ledger.models.journal import Account, AuditLog, LedgerEntry
 from src.domains.webhooks.models.outbox import WebhookOutbox
 
 
@@ -107,5 +107,21 @@ class WebhookEventSerializer(serializers.ModelSerializer):
             'status',
             'retry_count',
             'last_attempt',
+            'created_at',
+        ]
+
+
+class AuditLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AuditLog
+        fields = [
+            'id',
+            'actor_username',
+            'action',
+            'object_type',
+            'object_id',
+            'success',
+            'metadata',
+            'ip_address',
             'created_at',
         ]

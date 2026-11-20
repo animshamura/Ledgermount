@@ -12,6 +12,7 @@ from src.api.v1.views import (
     StaffAccountDetailView,
     AccountCreateView,
     WebhookEventListView,
+    AuditLogListView,
 )
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
@@ -31,4 +32,6 @@ urlpatterns = [
     path('api/v1/staff/accounts/<int:id>/', StaffAccountDetailView.as_view(), name='staff-account-detail'),
     path('api/v1/accounts/create/', AccountCreateView.as_view(), name='account-create'),
     path('api/v1/webhooks/', WebhookEventListView.as_view(), name='webhook-event-list'),
+    path('api/v1/audit-logs/', AuditLogListView.as_view(), name='audit-log-list'),
+    path('api/v1/audit/', AuditLogListView.as_view(), name='audit-log-list'),
 ]

@@ -40,6 +40,18 @@ export type Page<T> = {
   results: T[];
 };
 
+export type AuditLog = {
+  id: string;
+  actor_username: string;
+  action: string;
+  object_type: string;
+  object_id: string;
+  success: boolean;
+  metadata: Record<string, unknown>;
+  ip_address: string | null;
+  created_at: string;
+};
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 const TOKEN_KEY = "industrial-ledger-token";
 
@@ -115,6 +127,9 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(fields),
     });
+  },
+  auditLogs(page: number = 1) {
+    return request<Page<AuditLog>>(`/api/v1/audit/?page=${page}`);
   },
   webhookEvents(page: number = 1) {
     return request<Page<WebhookEvent>>(`/api/v1/webhooks/?page=${page}`);

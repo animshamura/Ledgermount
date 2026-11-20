@@ -20,12 +20,13 @@ import {
   RadioTower,
   Plus,
   TrendingUp,
+  History,
   WalletCards,
   X,
 } from "lucide-react";
-import { Account, api, LedgerEntry, Page, StaffAccount, WebhookEvent, TOKEN_KEY } from "./api";
+import { Account, AuditLog, api, LedgerEntry, Page, StaffAccount, WebhookEvent, TOKEN_KEY } from "./api";
 
-type View = "overview" | "accounts" | "entries" | "webhooks";
+type View = "overview" | "accounts" | "entries" | "webhooks" | "audit";
 
 const emptyPage = <T,>(): Page<T> => ({ count: 0, next: null, previous: null, results: [] });
 
@@ -412,6 +413,7 @@ function App() {
   const [showStaffAccounts, setShowStaffAccounts] = useState(false);
   const [showCreateAccount, setShowCreateAccount] = useState(false);
   const [webhooks, setWebhooks] = useState<Page<WebhookEvent>>(emptyPage());
+  const [auditLogs, setAuditLogs] = useState<Page<AuditLog>>(emptyPage());
 
   useEffect(() => {
     if (!token) return;
@@ -423,11 +425,13 @@ function App() {
       api.accounts(pageNumber, controller.signal),
       api.entries(pageNumber, controller.signal),
       api.webhookEvents(pageNumber),
-    ]).then(([accountPage, entryPage, webhookPage]) => {
+      isSuperuser ? api.auditLogs(pageNumber) : Promise.resolve(emptyPage<AuditLog>()),
+    ]).then(([accountPage, entryPage, webhookPage, auditPage]) => {
       setConnectionStatus("connected");
       setAccounts(accountPage);
       setEntries(entryPage);
       setWebhooks(webhookPage);
+      setAuditLogs(auditPage);
     }).catch((reason: unknown) => {
       if (!controller.signal.aborted) {
         setConnectionStatus("offline");
@@ -437,7 +441,7 @@ function App() {
       if (!controller.signal.aborted) setLoading(false);
     });
     return () => controller.abort();
-  }, [token, pageNumber, refreshKey]);
+  }, [token, pageNumber, refreshKey, isSuperuser]);
 
   async function signIn(username: string, password: string) {
     const result = await api.login(username, password);
@@ -485,13 +489,18 @@ function App() {
   const isAccounts = view === "accounts";
   const isOverview = view === "overview";
   const isWebhooks = view === "webhooks";
+  const isAudit = view === "audit";
   const webhookRows = webhooks.results.filter((event) => {
     const query = search.trim().toLowerCase();
     return !query || event.id.toLowerCase().includes(query) || event.event_type.toLowerCase().includes(query) || event.status.toLowerCase().includes(query);
   });
-  const currentCount = isAccounts ? accounts.count : isWebhooks ? webhooks.count : entries.count;
-  const canGoNext = isAccounts ? Boolean(accounts.next) : isWebhooks ? Boolean(webhooks.next) : Boolean(entries.next);
-  const canGoPrevious = isAccounts ? Boolean(accounts.previous) : isWebhooks ? Boolean(webhooks.previous) : Boolean(entries.previous);
+  const auditRows = auditLogs.results.filter((entry) => {
+    const query = search.trim().toLowerCase();
+    return !query || entry.actor_username.toLowerCase().includes(query) || entry.action.toLowerCase().includes(query) || entry.object_type.toLowerCase().includes(query) || entry.object_id.toLowerCase().includes(query);
+  });
+  const currentCount = isAccounts ? accounts.count : isWebhooks ? webhooks.count : isAudit ? auditLogs.count : entries.count;
+  const canGoNext = isAccounts ? Boolean(accounts.next) : isWebhooks ? Boolean(webhooks.next) : isAudit ? Boolean(auditLogs.next) : Boolean(entries.next);
+  const canGoPrevious = isAccounts ? Boolean(accounts.previous) : isWebhooks ? Boolean(webhooks.previous) : isAudit ? Boolean(auditLogs.previous) : Boolean(entries.previous);
   const currencyTotals = accounts.results.reduce<Record<string, { count: number; balance: number }>>((totals, account) => {
     const currencyTotal = totals[account.currency] ?? { count: 0, balance: 0 };
     currencyTotal.count += 1;
@@ -520,6 +529,20 @@ function App() {
       description: entry.description,
       created_at: entry.created_at,
     })));
+    if (isAudit) {
+      exportCsv("ledger-audit.csv", auditRows.map((entry) => ({
+        audit_id: entry.id,
+        actor: entry.actor_username,
+        action: entry.action,
+        object_type: entry.object_type,
+        object_id: entry.object_id,
+        success: entry.success ? "success" : "failure",
+        ip_address: entry.ip_address ?? "",
+        created_at: entry.created_at,
+        metadata: JSON.stringify(entry.metadata),
+      })));
+      return;
+    }
   }
 
   return (
@@ -543,8 +566,8 @@ function App() {
           <button aria-current={view === "webhooks" ? "page" : undefined} className={view === "webhooks" ? "nav-item active" : "nav-item"} onClick={() => { setView("webhooks"); setPageNumber(1); setSearch(""); }}>
             <RadioTower size={18} /> Webhooks
           </button>
-          {isSuperuser && <button className="nav-item" onClick={() => setShowStaffAccounts(true)}>
-            <ShieldCheck size={18} /> Staff accounts
+          {isSuperuser && <button aria-current={isAudit ? "page" : undefined} className={isAudit ? "nav-item active" : "nav-item"} onClick={() => { setView("audit"); setPageNumber(1); setSearch(""); }}>
+            <History size={18} /> Audit trail
           </button>}
         </nav>
         <div className="sidebar-bottom">
@@ -556,7 +579,7 @@ function App() {
 
       <main className="main-area">
         <header className="topbar">
-          <div className="breadcrumb"><span>Operations</span><span className="breadcrumb-slash">/</span><strong>{isOverview ? "Overview" : isAccounts ? "Accounts" : isWebhooks ? "Webhook monitor" : "Ledger entries"}</strong></div>
+          <div className="breadcrumb"><span>Operations</span><span className="breadcrumb-slash">/</span><strong>{isOverview ? "Overview" : isAccounts ? "Accounts" : isWebhooks ? "Webhook monitor" : isAudit ? "Audit trail" : "Ledger entries"}</strong></div>
           <div className="topbar-actions">
             <span className="secure-label"><ShieldCheck size={15} /> STAFF ACCESS</span>
             <button aria-label="Refresh ledger data" className="icon-button" disabled={loading} onClick={() => setRefreshKey((current) => current + 1)} title="Refresh data"><RefreshCw className={loading ? "spin" : ""} size={17} /></button>
@@ -567,8 +590,8 @@ function App() {
           <div className="page-heading">
             <div>
               <p className="eyebrow">TRANSACTIONAL LEDGER / OPERATIONS</p>
-              <h1>{isOverview ? "Operations overview" : isAccounts ? "Accounts" : isWebhooks ? "Webhook monitor" : "Ledger entries"}</h1>
-              <p className="page-subtitle">{isOverview ? "A live view of account coverage and recorded movement." : isAccounts ? "Review, create, and inspect ledger accounts." : isWebhooks ? "Monitor outbox delivery status and retry activity." : "Audit completed transfers and their account movements."}</p>
+              <h1>{isOverview ? "Operations overview" : isAccounts ? "Accounts" : isWebhooks ? "Webhook monitor" : isAudit ? "Audit trail" : "Ledger entries"}</h1>
+              <p className="page-subtitle">{isOverview ? "A live view of account coverage and recorded movement." : isAccounts ? "Review, create, and inspect ledger accounts." : isWebhooks ? "Monitor outbox delivery status and retry activity." : isAudit ? "Review staff actions and authentication activity." : "Audit completed transfers and their account movements."}</p>
             </div>
             <div className="page-actions">
               {isAccounts && <button className="button button-quiet" onClick={() => setShowCreateAccount(true)}><Plus size={17} /> Create account</button>}
@@ -606,7 +629,7 @@ function App() {
           <section className="data-section">
             <div className="section-toolbar">
               <div>
-                <h2>{isAccounts ? "Account register" : isOverview ? "Latest ledger activity" : "Ledger entries"}</h2>
+                <h2>{isAccounts ? "Account register" : isOverview ? "Latest ledger activity" : isWebhooks ? "Webhook monitor" : "Ledger entries"}</h2>
                 <p>{currentCount.toLocaleString("en-US")} records · page {pageNumber}</p>
               </div>
               <div className="table-tools">
@@ -656,6 +679,23 @@ function App() {
                   </table>
                 </div>
               ) : <div className="empty-state"><RadioTower size={20} /><strong>{search ? "No matching webhook events" : "No webhook events yet"}</strong><span>Transfer events will appear here as they enter the outbox.</span></div>
+            ) : isAudit ? (
+              auditRows.length ? (
+                <div className="table-scroll">
+                  <table>
+                    <thead><tr><th>TIME</th><th>ACTOR</th><th>ACTION</th><th>OBJECT TYPE</th><th>OBJECT ID</th></tr></thead>
+                    <tbody>{auditRows.map((entry) => (
+                      <tr key={entry.id}>
+                        <td className="date-cell">{timestamp(entry.created_at)}</td>
+                        <td className="mono">{entry.actor_username}</td>
+                        <td className="mono">{entry.action}</td>
+                        <td className="mono">{entry.object_type}</td>
+                        <td className="mono">{entry.object_id}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              ) : <div className="empty-state"><History size={20} /><strong>No audit records</strong><span>Activity records will appear here as they are generated.</span></div>
             ) : entryRows.length ? (
               <div className="table-scroll">
                 <table>

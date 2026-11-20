@@ -24,3 +24,14 @@ class LedgerEntry(models.Model):
             raise ValidationError("Amount must be strictly positive.")
         if self.debit_account_id == self.credit_account_id:
             raise ValidationError("Debit and Credit accounts cannot be identical.")
+
+class AuditLog(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    actor_username = models.CharField(max_length=150, blank=True, default="")
+    action = models.CharField(max_length=100, db_index=True)
+    object_type = models.CharField(max_length=100, blank=True, default="")
+    object_id = models.CharField(max_length=255, blank=True, default="")
+    success = models.BooleanField(default=True, db_index=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
