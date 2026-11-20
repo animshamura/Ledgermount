@@ -89,6 +89,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  health() {
+    return request<{ status: string }>("/api/v1/health/");
+  },
   async login(username: string, password: string) {
     return request<{ token: string; is_superuser: boolean }>('/api/v1/auth/token/', {
       method: 'POST',

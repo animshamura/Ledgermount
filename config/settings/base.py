@@ -7,7 +7,7 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "prod-hardened-fallback-key")
 DEBUG = False
 ALLOWED_HOSTS = [
     host.strip()
-    for host in os.getenv("DJANGO_ALLOWED_HOSTS", ".vercel.app,localhost,127.0.0.1").split(",")
+    for host in os.getenv("DJANGO_ALLOWED_HOSTS", "*").split(",")
     if host.strip()
 ]
 

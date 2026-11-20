@@ -427,6 +427,15 @@ function App() {
     setLoading(true);
     setConnectionStatus("checking");
     setError("");
+
+    void api.health()
+      .then(() => {
+        if (!controller.signal.aborted) setConnectionStatus("connected");
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setConnectionStatus("offline");
+      });
+
     Promise.all([
       api.accounts(pageNumber, controller.signal, search, currencyFilter),
       api.entries(pageNumber, controller.signal, search),
@@ -435,7 +444,6 @@ function App() {
       api.reconciliation(),
       api.operationalAlerts(),
     ]).then(([accountPage, entryPage, webhookPage, auditPage, reconciliationReport, alertReport]) => {
-      setConnectionStatus("connected");
       setAccounts(accountPage);
       setEntries(entryPage);
       setWebhooks(webhookPage);
@@ -444,7 +452,6 @@ function App() {
       setAlerts(alertReport);
     }).catch((reason: unknown) => {
       if (!controller.signal.aborted) {
-        setConnectionStatus("offline");
         setError(reason instanceof Error ? reason.message : "Unable to load ledger data.");
       }
     }).finally(() => {
