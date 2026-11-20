@@ -12,9 +12,12 @@ class AccountSerializer(serializers.ModelSerializer):
             'user_id',
             'balance',
             'currency',
+            'is_frozen',
+            'frozen_at',
             'created_at',
             'updated_at',
         ]
+        read_only_fields = ['id', 'user_id', 'balance', 'currency', 'frozen_at', 'created_at', 'updated_at']
 
 
 class LedgerEntrySerializer(serializers.ModelSerializer):

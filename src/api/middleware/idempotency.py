@@ -16,15 +16,20 @@ class RedisIdempotencyMiddleware:
         if not idempotency_key:
             return self.get_response(request)
 
-        request_scope = ":".join((
+        try:
+            body = request.body
+        except Exception:
+            body = b""
+        request_scope = "|".join((
             request.headers.get("Authorization", ""),
             request.method,
             request.path,
             idempotency_key,
+            hashlib.sha256(body).hexdigest(),
         ))
         cache_key = f"idempotency:{hashlib.sha256(request_scope.encode()).hexdigest()}"
         cached_data = self.cache.get(cache_key)
-        
+
         if cached_data:
             if cached_data == "LOCK":
                 return JsonResponse({"error": "Concurrent request flight in progress. Retry shortly."}, status=409)

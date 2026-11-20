@@ -7,6 +7,8 @@ class Account(models.Model):
     user_id = models.UUIDField(db_index=True, unique=True)
     balance = models.BigIntegerField(default=0)
     currency = models.CharField(max_length=3, default="USD")
+    is_frozen = models.BooleanField(default=False, db_index=True)
+    frozen_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

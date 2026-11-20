@@ -3,6 +3,8 @@ export type Account = {
   user_id: string;
   balance: number;
   currency: string;
+  is_frozen: boolean;
+  frozen_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -96,11 +98,16 @@ export const api = {
   logout() {
     return request<void>("/api/v1/auth/logout/", { method: "POST" });
   },
-  accounts(page: number, signal?: AbortSignal) {
-    return request<Page<Account>>(`/api/v1/accounts/?page=${page}`, { signal });
+  accounts(page: number, signal?: AbortSignal, search: string = "", currency: string = "all") {
+    const params = new URLSearchParams({ page: String(page) });
+    if (search.trim()) params.set("search", search.trim());
+    if (currency !== "all") params.set("currency", currency);
+    return request<Page<Account>>(`/api/v1/accounts/?${params}`, { signal });
   },
-  entries(page: number, signal?: AbortSignal) {
-    return request<Page<LedgerEntry>>(`/api/v1/ledger-entries/?page=${page}`, { signal });
+  entries(page: number, signal?: AbortSignal, search: string = "") {
+    const params = new URLSearchParams({ page: String(page) });
+    if (search.trim()) params.set("search", search.trim());
+    return request<Page<LedgerEntry>>(`/api/v1/ledger-entries/?${params}`, { signal });
   },
   transfer(source: string, destination: string, amount: number, idempotencyKey: string) {
     return request<{ transaction_id: string; status: string }>("/api/v1/transfers", {
@@ -139,6 +146,18 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ user_id: userId, balance, currency }),
     });
+  },
+  updateAccountFreeze(accountId: string, isFrozen: boolean) {
+    return request<Account>(`/api/v1/accounts/${accountId}/`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_frozen: isFrozen }),
+    });
+  },
+  reconciliation() {
+    return request<Record<string, unknown>>('/api/v1/reconciliation/');
+  },
+  operationalAlerts(lowBalanceThreshold: number = 100, largeTransferThreshold: number = 10000) {
+    return request<Record<string, unknown>>(`/api/v1/alerts/?low_balance_threshold=${lowBalanceThreshold}&large_transfer_threshold=${largeTransferThreshold}`);
   },
 };
 

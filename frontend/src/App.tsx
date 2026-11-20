@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { Account, AuditLog, api, LedgerEntry, Page, StaffAccount, WebhookEvent, TOKEN_KEY } from "./api";
 
-type View = "overview" | "accounts" | "entries" | "webhooks" | "audit";
+type View = "overview" | "accounts" | "entries" | "webhooks" | "audit" | "reconciliation" | "alerts";
 
 const emptyPage = <T,>(): Page<T> => ({ count: 0, next: null, previous: null, results: [] });
 
@@ -98,10 +98,12 @@ function AccountDetailDialog({
   account,
   entries,
   onClose,
+  onFreeze,
 }: {
   account: Account;
   entries: LedgerEntry[];
   onClose: () => void;
+  onFreeze: (accountId: string, isFrozen: boolean) => Promise<void>;
 }) {
   const related = entries.filter((entry) => entry.debit_account_id === account.id || entry.credit_account_id === account.id);
   return (
@@ -112,6 +114,8 @@ function AccountDetailDialog({
           <button aria-label="Close account details" className="icon-button" onClick={onClose} type="button"><X size={19} /></button>
         </div>
         <div className="account-balance-block"><span>AVAILABLE BALANCE</span><strong>{amount(account.balance, account.currency)}</strong><small>{account.currency} ledger units</small></div>
+        <div className="related-heading"><h3>Transfer status</h3><span className={`status-badge ${account.is_frozen ? "status-failed" : "status-completed"}`}>{account.is_frozen ? "FROZEN" : "ACTIVE"}</span></div>
+        <button className="button button-quiet" type="button" onClick={() => void onFreeze(account.id, !account.is_frozen)}>{account.is_frozen ? "Unfreeze account" : "Freeze account"}</button>
         <dl className="detail-grid">
           <div><dt>Account ID</dt><dd>{account.id}</dd></div>
           <div><dt>Owner ID</dt><dd>{account.user_id}</dd></div>
@@ -414,6 +418,8 @@ function App() {
   const [showCreateAccount, setShowCreateAccount] = useState(false);
   const [webhooks, setWebhooks] = useState<Page<WebhookEvent>>(emptyPage());
   const [auditLogs, setAuditLogs] = useState<Page<AuditLog>>(emptyPage());
+  const [reconciliation, setReconciliation] = useState<Record<string, unknown> | null>(null);
+  const [alerts, setAlerts] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -422,16 +428,20 @@ function App() {
     setConnectionStatus("checking");
     setError("");
     Promise.all([
-      api.accounts(pageNumber, controller.signal),
-      api.entries(pageNumber, controller.signal),
+      api.accounts(pageNumber, controller.signal, search, currencyFilter),
+      api.entries(pageNumber, controller.signal, search),
       api.webhookEvents(pageNumber),
       isSuperuser ? api.auditLogs(pageNumber) : Promise.resolve(emptyPage<AuditLog>()),
-    ]).then(([accountPage, entryPage, webhookPage, auditPage]) => {
+      api.reconciliation(),
+      api.operationalAlerts(),
+    ]).then(([accountPage, entryPage, webhookPage, auditPage, reconciliationReport, alertReport]) => {
       setConnectionStatus("connected");
       setAccounts(accountPage);
       setEntries(entryPage);
       setWebhooks(webhookPage);
       setAuditLogs(auditPage);
+      setReconciliation(reconciliationReport);
+      setAlerts(alertReport);
     }).catch((reason: unknown) => {
       if (!controller.signal.aborted) {
         setConnectionStatus("offline");
@@ -441,7 +451,7 @@ function App() {
       if (!controller.signal.aborted) setLoading(false);
     });
     return () => controller.abort();
-  }, [token, pageNumber, refreshKey, isSuperuser]);
+  }, [token, pageNumber, refreshKey, isSuperuser, search, currencyFilter]);
 
   async function signIn(username: string, password: string) {
     const result = await api.login(username, password);
@@ -468,6 +478,13 @@ function App() {
     const result = await api.transfer(source, destination, transferAmount, idempotencyKey);
     setShowTransfer(false);
     setSuccess(`Transfer ${result.transaction_id} authorized.`);
+    setRefreshKey((current) => current + 1);
+  }
+
+  async function updateAccountFreeze(accountId: string, isFrozen: boolean) {
+    await api.updateAccountFreeze(accountId, isFrozen);
+    setSelectedAccount(null);
+    setSuccess(isFrozen ? "Account frozen successfully." : "Account unfrozen successfully.");
     setRefreshKey((current) => current + 1);
   }
 
@@ -569,9 +586,12 @@ function App() {
           {isSuperuser && <button aria-current={isAudit ? "page" : undefined} className={isAudit ? "nav-item active" : "nav-item"} onClick={() => { setView("audit"); setPageNumber(1); setSearch(""); }}>
             <History size={18} /> Audit trail
           </button>}
+          {isSuperuser && <button className={view === "reconciliation" ? "nav-item active" : "nav-item"} onClick={() => setView("reconciliation")}><SlidersHorizontal size={18} /> Reconciliation</button>}
+          {isSuperuser && <button className={view === "alerts" ? "nav-item active" : "nav-item"} onClick={() => setView("alerts")}><AlertCircle size={18} /> Operational alerts</button>}
         </nav>
         <div className="sidebar-bottom">
           <div className={`connection-state connection-${connectionStatus}`}><span className="status-dot" /> API {connectionStatus === "checking" ? "checking" : connectionStatus}</div>
+          {isSuperuser && <button className="nav-item" onClick={() => setShowStaffAccounts(true)}><ShieldCheck size={17} /> Staff accounts</button>}
           <div className="environment-label">PRODUCTION WORKSPACE</div>
           <button className="nav-item signout-button" onClick={() => void signOut()}><LogOut size={17} /> Sign out</button>
         </div>
@@ -624,6 +644,13 @@ function App() {
                 <p className="panel-footnote">Balances summarize the current account page only.</p>
               </section>
             </div>
+          )}
+
+          {view === "reconciliation" && reconciliation && (
+            <div className="overview-grid"><section className="overview-panel"><div className="panel-heading"><div><p className="eyebrow">LEDGER CONTROL</p><h2>Reconciliation summary</h2></div></div><div className="currency-list"><div className="currency-row"><strong>Debit total</strong><strong className="currency-total">{String(reconciliation.debit_total)}</strong></div><div className="currency-row"><strong>Credit total</strong><strong className="currency-total">{String(reconciliation.credit_total)}</strong></div><div className="currency-row"><strong>Discrepancy</strong><strong className="currency-total">{String(reconciliation.discrepancy)}</strong></div></div></section></div>
+          )}
+          {view === "alerts" && alerts && (
+            <div className="overview-grid"><section className="overview-panel"><div className="panel-heading"><div><p className="eyebrow">OPERATIONS</p><h2>Active alerts</h2></div></div>{Array.isArray(alerts.alerts) ? <div className="currency-list">{(alerts.alerts as Array<{type: string; severity: string; message: string}>).map((alert, index) => <div className="currency-row" key={`${alert.type}-${index}`}><span className="currency-badge">{alert.severity.toUpperCase()}</span><span className="currency-row-main"><strong>{alert.type}</strong><small>{alert.message}</small></span></div>)}</div> : <div className="currency-empty">No active alerts.</div>}</section></div>
           )}
 
           <section className="data-section">
@@ -727,7 +754,7 @@ function App() {
       </main>
       {showTransfer && <TransferDialog accounts={accounts.results} onClose={() => setShowTransfer(false)} onComplete={completeTransfer} />}
       {showCreateAccount && <CreateAccountDialog onClose={() => setShowCreateAccount(false)} onComplete={async () => { setRefreshKey((current) => current + 1); setSuccess("Account created successfully."); }} />}
-      {selectedAccount && <AccountDetailDialog account={selectedAccount} entries={entries.results} onClose={() => setSelectedAccount(null)} />}
+      {selectedAccount && <AccountDetailDialog account={selectedAccount} entries={entries.results} onClose={() => setSelectedAccount(null)} onFreeze={updateAccountFreeze} />}
       {showStaffAccounts && <StaffAccountsDialog onClose={() => setShowStaffAccounts(false)} onChanged={setSuccess} />}
     </div>
   );

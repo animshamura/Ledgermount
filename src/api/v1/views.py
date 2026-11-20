@@ -20,6 +20,8 @@ from .serializers import (
 )
 from src.domains.ledger.services.audit import record_audit
 from src.domains.webhooks.models.outbox import WebhookOutbox
+from django.db.models import Count, Sum
+from django.utils import timezone
 
 
 class LedgerTransferView(APIView):
@@ -90,19 +92,59 @@ class StaffLogoutView(APIView):
 
 
 class AccountListView(generics.ListAPIView):
-    queryset = Account.objects.all().order_by('created_at')
     serializer_class = AccountSerializer
 
+    def get_queryset(self):
+        from django.db.models import Q
+        queryset = Account.objects.all()
+        search = (self.request.query_params.get('search') or '').strip()
+        currency = (self.request.query_params.get('currency') or '').strip().upper()
+        if search:
+            queryset = queryset.filter(Q(id__icontains=search) | Q(user_id__icontains=search))
+        if currency and currency != 'ALL':
+            queryset = queryset.filter(currency=currency)
+        return queryset.order_by('-created_at')
 
-class AccountDetailView(generics.RetrieveAPIView):
+
+class AccountDetailView(generics.RetrieveUpdateAPIView):
     queryset = Account.objects.all()
     serializer_class = AccountSerializer
     lookup_field = 'id'
 
+    def perform_update(self, serializer):
+        from django.utils import timezone
+        previous = Account.objects.only('is_frozen').get(pk=serializer.instance.pk)
+        account = serializer.save()
+        if 'is_frozen' in serializer.validated_data:
+            account.frozen_at = timezone.now() if account.is_frozen else None
+            account.save(update_fields=['is_frozen', 'frozen_at', 'updated_at'])
+            record_audit(
+                self.request.user.username,
+                'account_freeze' if account.is_frozen else 'account_unfreeze',
+                success=True,
+                object_type='Account',
+                object_id=account.id,
+                metadata={'previous_is_frozen': previous.is_frozen, 'is_frozen': account.is_frozen},
+                request=self.request,
+            )
+
 
 class LedgerEntryListView(generics.ListAPIView):
-    queryset = LedgerEntry.objects.select_related('debit_account', 'credit_account').all().order_by('-created_at')
     serializer_class = LedgerEntrySerializer
+
+    def get_queryset(self):
+        from django.db.models import Q
+        queryset = LedgerEntry.objects.select_related('debit_account', 'credit_account').all()
+        search = (self.request.query_params.get('search') or '').strip()
+        if search:
+            queryset = queryset.filter(
+                Q(id__icontains=search)
+                | Q(description__icontains=search)
+                | Q(debit_account_id__icontains=search)
+                | Q(credit_account_id__icontains=search)
+                | Q(idempotency_key__icontains=search)
+            )
+        return queryset.order_by('-created_at')
 
 
 class LedgerEntryDetailView(generics.RetrieveAPIView):
@@ -149,3 +191,39 @@ class AuditLogListView(generics.ListAPIView):
     permission_classes = [IsSuperuser]
     queryset = AuditLog.objects.all().order_by('-created_at')
     serializer_class = AuditLogSerializer
+
+
+class ReconciliationView(APIView):
+    def get(self, request, *args, **kwargs):
+        debit_total = LedgerEntry.objects.aggregate(total=Sum('amount'))['total'] or 0
+        credit_total = LedgerEntry.objects.aggregate(total=Sum('amount'))['total'] or 0
+        currency_totals = list(Account.objects.values('currency').annotate(account_count=Count('id'), balance=Sum('balance')).order_by('currency'))
+        frozen_count = Account.objects.filter(is_frozen=True).count()
+        discrepancy = debit_total - credit_total
+        return Response({
+            'entry_count': LedgerEntry.objects.count(),
+            'debit_total': debit_total,
+            'credit_total': credit_total,
+            'discrepancy': discrepancy,
+            'balanced': discrepancy == 0,
+            'currency_totals': currency_totals,
+            'frozen_account_count': frozen_count,
+            'generated_at': timezone.now(),
+        })
+
+
+class OperationalAlertsView(APIView):
+    def get(self, request, *args, **kwargs):
+        low_balance_threshold = int(request.query_params.get('low_balance_threshold', 100))
+        large_transfer_threshold = int(request.query_params.get('large_transfer_threshold', 10000))
+        low_balance = list(Account.objects.filter(balance__lt=low_balance_threshold).values('id', 'user_id', 'balance', 'currency', 'is_frozen').order_by('balance')[:25])
+        large_transfers = list(LedgerEntry.objects.filter(amount__gte=large_transfer_threshold).values('id', 'amount', 'description', 'created_at').order_by('-created_at')[:25])
+        failed_webhooks = WebhookOutbox.objects.filter(status='FAILED').count()
+        alerts = []
+        for account in low_balance:
+            alerts.append({'type': 'LOW_BALANCE', 'severity': 'warning', 'message': f"Account {account['id']} has balance {account['balance']} {account['currency']}", 'object_id': str(account['id'])})
+        if failed_webhooks:
+            alerts.append({'type': 'FAILED_WEBHOOKS', 'severity': 'critical', 'message': f'{failed_webhooks} webhook events are in FAILED status.', 'object_id': ''})
+        for transfer in large_transfers:
+            alerts.append({'type': 'LARGE_TRANSFER', 'severity': 'info', 'message': f"Large transfer recorded: {transfer['amount']} units", 'object_id': str(transfer['id'])})
+        return Response({'count': len(alerts), 'alerts': alerts, 'thresholds': {'low_balance': low_balance_threshold, 'large_transfer': large_transfer_threshold}, 'generated_at': timezone.now()})
