@@ -1,6 +1,6 @@
-from django.contrib.auth import authenticate
+from django.contrib.auth import authenticate, get_user_model
 from rest_framework.authtoken.models import Token
-from rest_framework.permissions import AllowAny, IsAdminUser
+from rest_framework.permissions import AllowAny, IsAdminUser, BasePermission
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework import generics, status
@@ -9,7 +9,7 @@ from rest_framework.exceptions import ValidationError
 from django.core.exceptions import ValidationError as DjangoValidationError
 from src.domains.ledger.services.transfer import LedgerTransferService
 from src.domains.ledger.models.journal import Account, LedgerEntry
-from .serializers import AccountSerializer, LedgerEntrySerializer, TransferRequestSerializer
+from .serializers import AccountSerializer, LedgerEntrySerializer, TransferRequestSerializer, StaffAccountSerializer
 
 
 class LedgerTransferView(APIView):
@@ -63,7 +63,7 @@ class StaffTokenView(APIView):
             return Response({"error": "Invalid staff credentials."}, status=status.HTTP_401_UNAUTHORIZED)
 
         token, _ = Token.objects.get_or_create(user=user)
-        return Response({"token": token.key}, status=status.HTTP_200_OK)
+        return Response({"token": token.key, "is_superuser": user.is_superuser}, status=status.HTTP_200_OK)
 
 
 class StaffLogoutView(APIView):
@@ -94,3 +94,27 @@ class LedgerEntryDetailView(generics.RetrieveAPIView):
     queryset = LedgerEntry.objects.select_related('debit_account', 'credit_account').all()
     serializer_class = LedgerEntrySerializer
     lookup_field = 'id'
+
+
+class IsSuperuser(BasePermission):
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated and request.user.is_superuser)
+
+
+class StaffAccountListCreateView(generics.ListCreateAPIView):
+    permission_classes = [IsSuperuser]
+    serializer_class = StaffAccountSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        return get_user_model().objects.filter(is_staff=True).order_by("username")
+
+
+class StaffAccountDetailView(generics.RetrieveUpdateAPIView):
+    permission_classes = [IsSuperuser]
+    serializer_class = StaffAccountSerializer
+    lookup_field = "pk"
+    lookup_url_kwarg = "id"
+
+    def get_queryset(self):
+        return get_user_model().objects.filter(is_staff=True)

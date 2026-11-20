@@ -186,6 +186,48 @@ class AccountEndpointsTests(TestCase):
         self.assertEqual(response.status_code, 401)
 
 
+class StaffAccountManagementTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.superuser = User.objects.create_superuser(username="root-admin", password="root-password-123")
+        self.superuser_token = Token.objects.create(user=self.superuser)
+
+    def request(self, method, path, data=None):
+        client = Client()
+        client.defaults["HTTP_AUTHORIZATION"] = f"Token {self.superuser_token.key}"
+        return getattr(client, method)(path, data or {}, content_type="application/json")
+
+    def test_superuser_can_create_and_reset_staff_account(self):
+        created = self.request("post", "/api/v1/staff/accounts/", {
+            "username": "operations-user",
+            "password": "operations-password-123",
+        })
+        self.assertEqual(created.status_code, 201)
+
+        User = get_user_model()
+        staff = User.objects.get(username="operations-user")
+        self.assertTrue(staff.is_staff)
+
+        reset = self.request("patch", f"/api/v1/staff/accounts/{staff.pk}/", {
+            "password": "new-operations-password-123",
+        })
+        self.assertEqual(reset.status_code, 200)
+        staff.refresh_from_db()
+        self.assertTrue(staff.check_password("new-operations-password-123"))
+
+    def test_regular_staff_cannot_manage_staff_accounts(self):
+        User = get_user_model()
+        staff = User.objects.create_user(username="regular", password="regular-password-123", is_staff=True)
+        token = Token.objects.create(user=staff)
+        client = Client()
+        client.defaults["HTTP_AUTHORIZATION"] = f"Token {token.key}"
+        response = client.post("/api/v1/staff/accounts/", {
+            "username": "unauthorized",
+            "password": "unauthorized-password-123",
+        }, content_type="application/json")
+        self.assertEqual(response.status_code, 403)
+
+
 class LedgerEntryEndpointsTests(TestCase):
     def setUp(self):
         self.client = Client()

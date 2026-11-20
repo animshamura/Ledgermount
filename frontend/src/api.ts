@@ -7,6 +7,12 @@ export type Account = {
   updated_at: string;
 };
 
+export type StaffAccount = {
+  id: number;
+  username: string;
+  is_active: boolean;
+};
+
 export type LedgerEntry = {
   id: string;
   idempotency_key: string;
@@ -60,8 +66,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const api = {
   async login(username: string, password: string) {
-    return request<{ token: string }>("/api/v1/auth/token/", {
-      method: "POST",
+    return request<{ token: string; is_superuser: boolean }>('/api/v1/auth/token/', {
+      method: 'POST',
       body: JSON.stringify({ username, password }),
     });
   },
@@ -83,6 +89,21 @@ export const api = {
         destination_account_id: destination,
         amount,
       }),
+    });
+  },
+  staffAccounts() {
+    return request<StaffAccount[]>('/api/v1/staff/accounts/');
+  },
+  createStaffAccount(username: string, password: string) {
+    return request<StaffAccount>('/api/v1/staff/accounts/', {
+      method: 'POST',
+      body: JSON.stringify({ username, password, is_active: true }),
+    });
+  },
+  updateStaffAccount(id: number, fields: { password?: string; is_active?: boolean }) {
+    return request<StaffAccount>(`/api/v1/staff/accounts/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(fields),
     });
   },
 };

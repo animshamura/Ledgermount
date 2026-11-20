@@ -21,9 +21,9 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
-import { Account, api, LedgerEntry, Page, TOKEN_KEY } from "./api";
+import { Account, api, LedgerEntry, Page, StaffAccount, TOKEN_KEY } from "./api";
 
-type View = "overview" | "accounts" | "entries";
+type View = "overview" | "accounts" | "entries" | "staff";
 
 const emptyPage = <T,>(): Page<T> => ({ count: 0, next: null, previous: null, results: [] });
 
@@ -274,6 +274,84 @@ function TransferDialog({
   );
 }
 
+function StaffAccountsDialog({ onClose, onChanged }: { onClose: () => void; onChanged: (message: string) => void }) {
+  const [accounts, setAccounts] = useState<StaffAccount[]>([]);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [resetPassword, setResetPassword] = useState("");
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function reload() {
+    setAccounts(await api.staffAccounts());
+  }
+
+  useEffect(() => {
+    void reload().catch((reason) => setError(reason instanceof Error ? reason.message : "Unable to load staff accounts."));
+  }, []);
+
+  async function createAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      await api.createStaffAccount(username.trim(), password);
+      setUsername("");
+      setPassword("");
+      await reload();
+      onChanged("Staff account created.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to create staff account.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resetSelectedPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (selectedId === null) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api.updateStaffAccount(selectedId, { password: resetPassword });
+      setResetPassword("");
+      setSelectedId(null);
+      await reload();
+      onChanged("Staff password reset.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to reset password.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section aria-modal="true" role="dialog" className="transfer-dialog">
+        <div className="dialog-heading"><div><p className="eyebrow">SUPERUSER ACCESS</p><h2>Staff accounts</h2></div><button aria-label="Close staff accounts" className="icon-button" onClick={onClose} type="button"><X size={19} /></button></div>
+        {error && <p className="form-error"><AlertCircle size={16} />{error}</p>}
+        <form className="login-form" onSubmit={createAccount}>
+          <label>Username<input autoComplete="off" required value={username} onChange={(event) => setUsername(event.target.value)} /></label>
+          <label>New password <span className="field-note">Minimum 12 characters</span><input autoComplete="new-password" required minLength={12} type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+          <div className="dialog-actions"><button className="button button-primary" disabled={busy || password.length < 12} type="submit">Create staff account</button></div>
+        </form>
+        <div className="related-heading"><h3>Existing staff</h3><span>{accounts.length} accounts</span></div>
+        <div className="related-list">{accounts.map((account) => (
+          <div className="related-row" key={account.id}>
+            <span className="related-copy"><strong>{account.username}</strong><small>{account.is_active ? "Active" : "Inactive"}</small></span>
+            <button className="button button-quiet" type="button" onClick={() => { setSelectedId(account.id); setResetPassword(""); }}>Reset password</button>
+          </div>
+        ))}</div>
+        {selectedId !== null && <form className="login-form" onSubmit={resetSelectedPassword}>
+          <label>Reset password <span className="field-note">Minimum 12 characters</span><input autoComplete="new-password" required minLength={12} type="password" value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} /></label>
+          <div className="dialog-actions"><button className="button button-quiet" type="button" onClick={() => setSelectedId(null)}>Cancel</button><button className="button button-primary" disabled={busy || resetPassword.length < 12} type="submit">Save new password</button></div>
+        </form>}
+      </section>
+    </div>
+  );
+}
+
 function App() {
   const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_KEY));
   const [view, setView] = useState<View>("overview");
@@ -290,6 +368,8 @@ function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [showTransfer, setShowTransfer] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
+  const [isSuperuser, setIsSuperuser] = useState(() => sessionStorage.getItem("industrial-ledger-is-superuser") === "true");
+  const [showStaffAccounts, setShowStaffAccounts] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -318,6 +398,8 @@ function App() {
   async function signIn(username: string, password: string) {
     const result = await api.login(username, password);
     sessionStorage.setItem(TOKEN_KEY, result.token);
+    sessionStorage.setItem("industrial-ledger-is-superuser", String(result.is_superuser));
+    setIsSuperuser(result.is_superuser);
     setToken(result.token);
   }
 
@@ -326,9 +408,11 @@ function App() {
       await api.logout();
     } finally {
       sessionStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem("industrial-ledger-is-superuser");
       setToken(null);
       setAccounts(emptyPage());
       setEntries(emptyPage());
+      setIsSuperuser(false);
     }
   }
 
@@ -407,6 +491,9 @@ function App() {
           <button aria-current={view === "entries" ? "page" : undefined} className={view === "entries" ? "nav-item active" : "nav-item"} onClick={() => { setView("entries"); setPageNumber(1); setSearch(""); }}>
             <ArrowLeftRight size={18} /> Ledger entries
           </button>
+          {isSuperuser && <button className="nav-item" onClick={() => setShowStaffAccounts(true)}>
+            <ShieldCheck size={18} /> Staff accounts
+          </button>}
         </nav>
         <div className="sidebar-bottom">
           <div className={`connection-state connection-${connectionStatus}`}><span className="status-dot" /> API {connectionStatus === "checking" ? "checking" : connectionStatus}</div>
@@ -527,6 +614,7 @@ function App() {
       </main>
       {showTransfer && <TransferDialog accounts={accounts.results} onClose={() => setShowTransfer(false)} onComplete={completeTransfer} />}
       {selectedAccount && <AccountDetailDialog account={selectedAccount} entries={entries.results} onClose={() => setSelectedAccount(null)} />}
+      {showStaffAccounts && <StaffAccountsDialog onClose={() => setShowStaffAccounts(false)} onChanged={setSuccess} />}
     </div>
   );
 }
