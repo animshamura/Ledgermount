@@ -70,28 +70,28 @@ Balances and transfer amounts are stored as **integers in ledger units**. The AP
 
 ## Demo Screenshots
 
-The screenshots below show the Ledgermount interface with illustrative local development data.
+The screenshots below were captured from the running application (Django API on port 8000, Vite console on port 5173) using illustrative local demo data: 12 accounts across USD, EUR, GBP, and BDT, plus sample ledger transfers.
 
 <table>
   <tr>
-    <td><strong>1. Operations overview</strong><br><img src="docs/screenshots/01-operations-overview.png" alt="Ledgermount operations overview with account metrics, activity, and recent entries" width="100%"></td>
-    <td><strong>2. Mobile overview</strong><br><img src="docs/screenshots/02-overview-mobile.png" alt="Ledgermount operations overview on mobile" width="100%"></td>
+    <td><strong>1. Staff sign-in</strong><br><img src="docs/screenshots/01-staff-sign-in.png" alt="Ledgermount staff sign-in screen" width="100%"></td>
+    <td><strong>2. Operations overview</strong><br><img src="docs/screenshots/02-operations-overview.png" alt="Operations overview with account metrics, transfer volume chart, currency coverage, and latest ledger activity" width="100%"></td>
   </tr>
   <tr>
-    <td><strong>3. Account register</strong><br><img src="docs/screenshots/03-accounts.png" alt="Account register with balances and account IDs" width="100%"></td>
-    <td><strong>4. Currency filter</strong><br><img src="docs/screenshots/04-accounts-currency-filter.png" alt="Account register filtered by currency" width="100%"></td>
+    <td><strong>3. Account register</strong><br><img src="docs/screenshots/03-account-register.png" alt="Account register with balances, currencies, and account IDs" width="100%"></td>
+    <td><strong>4. Currency filter</strong><br><img src="docs/screenshots/04-currency-filter.png" alt="Account register filtered to a single currency" width="100%"></td>
   </tr>
   <tr>
-    <td><strong>5. Account details</strong><br><img src="docs/screenshots/05-account-details.png" alt="Account profile with balance and related activity" width="100%"></td>
-    <td><strong>6. Ledger activity</strong><br><img src="docs/screenshots/06-ledger-entries.png" alt="Paginated ledger entry list" width="100%"></td>
+    <td><strong>5. Account details</strong><br><img src="docs/screenshots/05-account-details.png" alt="Account details dialog with balance, status, and freeze control" width="100%"></td>
+    <td><strong>6. New transfer</strong><br><img src="docs/screenshots/06-new-transfer.png" alt="New transfer form with source account, destination account, and amount" width="100%"></td>
   </tr>
   <tr>
-    <td><strong>7. Ledger search</strong><br><img src="docs/screenshots/07-ledger-search.png" alt="Ledger entries filtered by a search query" width="100%"></td>
-    <td><strong>8. Transfer form</strong><br><img src="docs/screenshots/08-transfer-form.png" alt="New transfer form with source, destination, and amount" width="100%"></td>
+    <td><strong>7. Transfer review</strong><br><img src="docs/screenshots/07-transfer-review.png" alt="Transfer review step asking staff to confirm before the transfer is executed" width="100%"></td>
+    <td><strong>8. Ledger entries</strong><br><img src="docs/screenshots/08-ledger-entries.png" alt="Paginated ledger entries including the newly authorized transfer" width="100%"></td>
   </tr>
   <tr>
-    <td><strong>9. Transfer review</strong><br><img src="docs/screenshots/09-transfer-review.png" alt="Transfer review and confirmation step" width="100%"></td>
-    <td><strong>10. Staff sign-in</strong><br><img src="docs/screenshots/10-staff-sign-in.png" alt="Ledgermount staff sign-in screen" width="100%"></td>
+    <td><strong>9. Webhook monitor</strong><br><img src="docs/screenshots/09-webhook-monitor.png" alt="Webhook outbox monitor showing event status and retry counts" width="100%"></td>
+    <td><strong>10. Audit trail</strong><br><img src="docs/screenshots/10-audit-log.png" alt="Audit trail of staff logins and transfer executions" width="100%"></td>
   </tr>
 </table>
 
